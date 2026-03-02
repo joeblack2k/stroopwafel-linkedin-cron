@@ -1,0 +1,19 @@
+[Unit]
+Description=LinkedIn Cron HTTP Server
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=www-data
+Group=www-data
+WorkingDirectory=/opt/linkedin-cron
+EnvironmentFile=/etc/linkedin-cron.env
+ExecStart=/usr/local/bin/linkedin-cron-server
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

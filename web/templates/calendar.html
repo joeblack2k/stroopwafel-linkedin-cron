@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{.Title}} · linkedin-cron</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <script src="https://unpkg.com/htmx.org@1.9.12" defer></script>
+</head>
+<body hx-boost="true">
+  <header class="topbar">
+    <h1>linkedin-cron</h1>
+    <nav>
+      <a href="/calendar">Calendar</a>
+      <a href="/posts/new?return_to={{printf "/calendar?view=%s&date=%s" .View (.CurrentDate.Format "2006-01-02")}}">New Post</a>
+      <a href="/settings">Settings</a>
+    </nav>
+  </header>
+
+  <main class="container">
+    <section class="toolbar">
+      <div>
+        <a class="button" href="/calendar?view={{.View}}&date={{.PrevDate}}">← Prev</a>
+        <a class="button" href="/calendar?view={{.View}}&date={{.NextDate}}">Next →</a>
+      </div>
+      <div>
+        <a class="button {{if eq .View "month"}}active{{end}}" href="/calendar?view=month&date={{.CurrentDate.Format "2006-01-02"}}">Month</a>
+        <a class="button {{if eq .View "week"}}active{{end}}" href="/calendar?view=week&date={{.CurrentDate.Format "2006-01-02"}}">Week</a>
+      </div>
+    </section>
+
+    {{if .Message}}<div class="notice success">{{.Message}}</div>{{end}}
+    {{if .Error}}<div class="notice error">{{.Error}}</div>{{end}}
+
+    {{if eq .View "week"}}
+      <section class="week-list">
+        {{range .WeekDays}}
+          <article class="week-day">
+            <h3>{{.Date.Format "Mon 02 Jan 2006"}}</h3>
+            {{if .Posts}}
+              <ul class="post-list">
+                {{range .Posts}}
+                  <li>
+                    <a href="/posts/{{.ID}}/edit?return_to={{printf "/calendar?view=week&date=%s" ($.CurrentDate.Format "2006-01-02")}}">
+                      {{fmtTime .ScheduledAt $.Location}} · {{.Text}}
+                    </a>
+                    {{if ne .Status "sent"}}
+                      <form class="inline" method="post" action="/posts/{{.ID}}/send-now">
+                        <input type="hidden" name="return_to" value="/calendar?view=week&date={{$.CurrentDate.Format "2006-01-02"}}">
+                        <button type="submit">Send now</button>
+                      </form>
+                    {{end}}
+                  </li>
+                {{end}}
+              </ul>
+            {{else}}
+              <p class="muted">No posts</p>
+            {{end}}
+          </article>
+        {{end}}
+      </section>
+    {{else}}
+      <section class="month-grid" role="grid">
+        {{range .Days}}
+          <article class="day-cell {{if not .InMonth}}outside{{end}}">
+            <h3>{{.Date.Format "Mon 02"}}</h3>
+            {{if .Posts}}
+              <ul class="post-list">
+                {{range .Posts}}
+                  <li>
+                    <a href="/posts/{{.ID}}/edit?return_to={{printf "/calendar?view=month&date=%s" ($.CurrentDate.Format "2006-01-02")}}">
+                      {{fmtTime .ScheduledAt $.Location}} · {{.Text}}
+                    </a>
+                    {{if ne .Status "sent"}}
+                      <form class="inline" method="post" action="/posts/{{.ID}}/send-now">
+                        <input type="hidden" name="return_to" value="/calendar?view=month&date={{$.CurrentDate.Format "2006-01-02"}}">
+                        <button type="submit">Send</button>
+                      </form>
+                    {{end}}
+                  </li>
+                {{end}}
+              </ul>
+            {{else}}
+              <p class="muted">No posts</p>
+            {{end}}
+          </article>
+        {{end}}
+      </section>
+    {{end}}
+  </main>
+</body>
+</html>

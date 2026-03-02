@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{.Title}} · linkedin-cron</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <script src="https://unpkg.com/htmx.org@1.9.12" defer></script>
+</head>
+<body hx-boost="true">
+  <header class="topbar">
+    <h1>linkedin-cron</h1>
+    <nav>
+      <a href="/calendar">Calendar</a>
+      <a href="/posts/new">New Post</a>
+      <a href="/settings">Settings</a>
+    </nav>
+  </header>
+
+  <main class="container narrow">
+    <h2>{{.Title}}</h2>
+    {{if .Message}}<div class="notice success">{{.Message}}</div>{{end}}
+    {{if .Error}}<div class="notice error">{{.Error}}</div>{{end}}
+
+    <form method="post" action="{{if .IsEdit}}/posts/{{.PostID}}{{else}}/posts{{end}}" class="stack">
+      <input type="hidden" name="return_to" value="{{.ReturnTo}}">
+
+      <label>
+        Scheduled at
+        <input type="datetime-local" name="scheduled_at" value="{{.Form.ScheduledAt}}">
+      </label>
+
+      <label>
+        Text
+        <textarea name="text" rows="6" required>{{.Form.Text}}</textarea>
+      </label>
+
+      <label>
+        Status
+        <select name="status" required>
+          <option value="draft" {{if eq .Form.Status "draft"}}selected{{end}}>draft</option>
+          <option value="scheduled" {{if eq .Form.Status "scheduled"}}selected{{end}}>scheduled</option>
+          {{if and (ne .Form.Status "") (ne .Form.Status "draft") (ne .Form.Status "scheduled")}}
+            <option value="{{.Form.Status}}" selected disabled>{{.Form.Status}} (readonly)</option>
+          {{end}}
+        </select>
+      </label>
+
+      <label>
+        Media URL (optional)
+        <input type="url" name="media_url" value="{{.Form.MediaURL}}" placeholder="https://example.com/article">
+      </label>
+
+      <div class="button-row">
+        <button type="submit">{{if .IsEdit}}Update Post{{else}}Create Post{{end}}</button>
+        <a class="button" href="{{.ReturnTo}}">Back</a>
+      </div>
+    </form>
+
+    {{if .IsEdit}}
+      <section class="actions">
+        <h3>Actions</h3>
+        <form method="post" action="/posts/{{.PostID}}/send-now" class="inline">
+          <input type="hidden" name="return_to" value="/posts/{{.PostID}}/edit">
+          <button type="submit">Send now</button>
+        </form>
+        {{if .AllowDelete}}
+          <form method="post" action="/posts/{{.PostID}}/delete" class="inline">
+            <input type="hidden" name="return_to" value="{{.ReturnTo}}">
+            <button type="submit" class="danger">Delete</button>
+          </form>
+        {{end}}
+      </section>
+    {{end}}
+  </main>
+</body>
+</html>

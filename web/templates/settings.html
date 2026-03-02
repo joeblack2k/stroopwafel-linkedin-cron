@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{.Title}} · linkedin-cron</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <header class="topbar">
+    <h1>linkedin-cron</h1>
+    <nav>
+      <a href="/calendar">Calendar</a>
+      <a href="/posts/new">New Post</a>
+      <a href="/settings">Settings</a>
+    </nav>
+  </header>
+
+  <main class="container narrow">
+    <h2>Settings status</h2>
+    <table>
+      <tbody>
+        <tr><th>Basic auth configured</th><td>{{.Settings.BasicAuthConfigured}}</td></tr>
+        <tr><th>Auth user</th><td>{{.Settings.MaskedAuthUser}}</td></tr>
+        <tr><th>Auth password</th><td>{{.Settings.MaskedAuthPass}}</td></tr>
+        <tr><th>Publisher mode (active)</th><td>{{.Settings.PublisherMode}}</td></tr>
+        <tr><th>Publisher mode (requested)</th><td>{{.Settings.RequestedMode}}</td></tr>
+        <tr><th>LinkedIn configured</th><td>{{.Settings.LinkedInConfigured}}</td></tr>
+        <tr><th>LinkedIn token</th><td>{{.Settings.MaskedLinkedInToken}}</td></tr>
+        <tr><th>LinkedIn author URN</th><td>{{.Settings.MaskedAuthorURN}}</td></tr>
+        <tr><th>DB path</th><td><code>{{.Settings.DBPath}}</code></td></tr>
+        <tr><th>Timezone</th><td>{{.Settings.Timezone}}</td></tr>
+        <tr><th>Migration status</th><td>{{.Settings.MigrationStatus}}</td></tr>
+      </tbody>
+    </table>
+  </main>
+</body>
+</html>
