@@ -44,6 +44,7 @@ type SettingsStatus struct {
 	BasicAuthConfigured bool   `json:"basic_auth_configured"`
 	MaskedAuthUser      string `json:"masked_auth_user"`
 	MaskedAuthPass      string `json:"masked_auth_pass"`
+	StaticAPIKeysCount  int    `json:"static_api_keys_count"`
 	PublisherMode       string `json:"publisher_mode"`
 	RequestedMode       string `json:"requested_mode"`
 	LinkedInConfigured  bool   `json:"linkedin_configured"`
@@ -87,7 +88,7 @@ func BasicAuthMiddleware(username, password string, logger *slog.Logger) func(ht
 	}
 }
 
-func APIAuthMiddleware(username, password string, store *db.Store, logger *slog.Logger) func(http.Handler) http.Handler {
+func APIAuthMiddleware(username, password string, store *db.Store, staticAPIKeys map[string]string, logger *slog.Logger) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if isValidBasicAuth(r, username, password) {
@@ -98,22 +99,31 @@ func APIAuthMiddleware(username, password string, store *db.Store, logger *slog.
 
 			token := extractAPIKeyToken(r)
 			if token != "" {
-				apiKey, err := store.AuthenticateAPIKey(r.Context(), token)
-				if err == nil {
-					ctx := context.WithValue(r.Context(), contextKeyAuthMethod, "api-key")
-					ctx = context.WithValue(ctx, contextKeyAPIKeyID, apiKey.ID)
-					ctx = context.WithValue(ctx, contextKeyAPIKeyName, apiKey.Name)
+				if name, ok := staticAPIKeys[token]; ok {
+					ctx := context.WithValue(r.Context(), contextKeyAuthMethod, "api-key-env")
+					ctx = context.WithValue(ctx, contextKeyAPIKeyName, name)
 					next.ServeHTTP(w, r.WithContext(ctx))
 					return
 				}
-				logger.LogAttrs(
-					r.Context(),
-					slog.LevelWarn,
-					"api key authentication failed",
-					slog.String("component", "http"),
-					slog.String("path", r.URL.Path),
-					slog.String("error", err.Error()),
-				)
+
+				if store != nil {
+					apiKey, err := store.AuthenticateAPIKey(r.Context(), token)
+					if err == nil {
+						ctx := context.WithValue(r.Context(), contextKeyAuthMethod, "api-key")
+						ctx = context.WithValue(ctx, contextKeyAPIKeyID, apiKey.ID)
+						ctx = context.WithValue(ctx, contextKeyAPIKeyName, apiKey.Name)
+						next.ServeHTTP(w, r.WithContext(ctx))
+						return
+					}
+					logger.LogAttrs(
+						r.Context(),
+						slog.LevelWarn,
+						"api key authentication failed",
+						slog.String("component", "http"),
+						slog.String("path", r.URL.Path),
+						slog.String("error", err.Error()),
+					)
+				}
 			}
 
 			w.Header().Set("WWW-Authenticate", `Basic realm="linkedin-cron"`)
@@ -191,6 +201,7 @@ func (a *App) settingsStatus() SettingsStatus {
 		BasicAuthConfigured: a.Config.BasicAuthConfigured(),
 		MaskedAuthUser:      config.MaskSecret(a.Config.BasicAuthUser),
 		MaskedAuthPass:      config.MaskSecret(a.Config.BasicAuthPass),
+		StaticAPIKeysCount:  len(a.Config.StaticAPIKeys),
 		PublisherMode:       a.ActivePublisher,
 		RequestedMode:       a.RequestedPublisher,
 		LinkedInConfigured:  a.LinkedInConfigured,

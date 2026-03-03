@@ -22,7 +22,7 @@ func TestAPIAuthMiddlewareWithAPIKey(t *testing.T) {
 	}
 
 	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
-	middleware := APIAuthMiddleware("admin", "admin", store, logger)
+	middleware := APIAuthMiddleware("admin", "admin", store, nil, logger)
 
 	handler := middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if AuthMethodForLog(r.Context()) != "api-key" {
@@ -49,7 +49,7 @@ func TestAPIAuthMiddlewareRejectsInvalidCredentials(t *testing.T) {
 
 	store := setupAuthStore(t)
 	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
-	middleware := APIAuthMiddleware("admin", "admin", store, logger)
+	middleware := APIAuthMiddleware("admin", "admin", store, nil, logger)
 
 	handler := middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -62,6 +62,33 @@ func TestAPIAuthMiddlewareRejectsInvalidCredentials(t *testing.T) {
 
 	if rec.Code != http.StatusUnauthorized {
 		t.Fatalf("expected status 401, got %d", rec.Code)
+	}
+}
+
+func TestAPIAuthMiddlewareWithEnvAPIKeyBearer(t *testing.T) {
+	t.Parallel()
+
+	store := setupAuthStore(t)
+	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	middleware := APIAuthMiddleware("admin", "admin", store, map[string]string{"lcak_env": "bot-public"}, logger)
+
+	handler := middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if AuthMethodForLog(r.Context()) != "api-key-env" {
+			t.Fatalf("expected api-key-env auth method, got %s", AuthMethodForLog(r.Context()))
+		}
+		if APIKeyNameForLog(r.Context()) != "bot-public" {
+			t.Fatalf("expected api key name bot-public, got %q", APIKeyNameForLog(r.Context()))
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/posts", nil)
+	req.Header.Set("Authorization", "Bearer lcak_env")
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", rec.Code)
 	}
 }
 

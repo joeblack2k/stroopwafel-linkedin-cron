@@ -9,6 +9,8 @@ This guide explains how agents should authenticate and safely use the JSON API.
   - HTTP Basic Auth, or
   - API key (`X-API-Key` or `Authorization: Bearer ...`).
 
+For fully automated deployments, you can preconfigure bot keys with `APP_STATIC_API_KEYS` (for example `bot-main:lcak_prod_xxx`).
+
 ## Create an API key in the GUI
 
 1. Login to `/settings` with Basic Auth.

@@ -76,6 +76,7 @@ Environment variables:
 - `APP_DB_PATH` (default `./data/linkedin-cron.db`)
 - `APP_BASIC_AUTH_USER`
 - `APP_BASIC_AUTH_PASS`
+- `APP_STATIC_API_KEYS` (optional bootstrap API keys, format: `name:token,name2:token2`)
 - `APP_SESSION_SECURE`
 - `APP_TIMEZONE` (default `UTC`)
 - `PUBLISHER_MODE` (`dry-run`, `linkedin`, or `facebook-page`, default `dry-run`)
@@ -96,6 +97,12 @@ API routes support:
 - API key (`X-API-Key` or `Authorization: Bearer ...`)
 
 API keys are created/revoked in `/settings`.
+
+For container-first/public deployments you can also bootstrap fixed API keys from env:
+
+- `APP_STATIC_API_KEYS=bot-main:lcak_prod_xxx`
+
+These env keys are accepted immediately by API auth middleware (in addition to DB-backed keys).
 
 Security behavior:
 
@@ -269,6 +276,7 @@ This repo includes:
 
 - `Dockerfile`
 - `docker-compose.yml`
+- `docker-compose.public.yml`
 - GitHub Actions GHCR publisher: `.github/workflows/ghcr.yml`
 
 Run locally with Docker:
@@ -307,6 +315,19 @@ export IMAGE_TAG=latest
 ```
 
 This uses `docker-compose.ghcr.yml` to force image pulls and disable compose local build.
+
+### Public URL compose (username/password + bot API key defaults)
+
+Use the included public compose file:
+
+```bash
+docker compose -f docker-compose.public.yml up -d
+```
+
+Defaults in that file:
+
+- UI/API Basic Auth: `admin` / `admin`
+- Static bot key: `bot:bot-change-me` (set `APP_STATIC_API_KEYS` to your real key)
 
 ## Import from Postiz
 

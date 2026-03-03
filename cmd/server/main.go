@@ -80,7 +80,7 @@ func main() {
 	mux.HandleFunc("GET /api/v1/healthz", app.APIHealthz)
 
 	uiAuth := handlers.BasicAuthMiddleware(cfg.BasicAuthUser, cfg.BasicAuthPass, logger)
-	apiAuth := handlers.APIAuthMiddleware(cfg.BasicAuthUser, cfg.BasicAuthPass, store, logger)
+	apiAuth := handlers.APIAuthMiddleware(cfg.BasicAuthUser, cfg.BasicAuthPass, store, cfg.StaticAPIKeys, logger)
 	registerProtectedRoutes(mux, uiAuth, apiAuth, app)
 
 	handler := requestLogger(logger, mux)

@@ -22,6 +22,17 @@ The compose setup runs:
 
 Both containers share the same SQLite volume (`linkedin_cron_data`).
 
+For public URL deployments with explicit auth defaults use `docker-compose.public.yml`:
+
+```bash
+docker compose -f docker-compose.public.yml up -d
+```
+
+Default auth values in that compose:
+
+- Basic auth: `admin/admin`
+- Static API key for bots: `bot:bot-change-me` via `APP_STATIC_API_KEYS`
+
 ### Pull-only deploy/update (recommended for hosts)
 
 Use `scripts/deploy-ghcr.sh` with a PAT that has `read:packages`:
@@ -52,6 +63,10 @@ Optional publisher settings:
 
 - LinkedIn mode (`PUBLISHER_MODE=linkedin`, token + author URN)
 - Facebook Page mode (`PUBLISHER_MODE=facebook-page`, page token + page id)
+
+Optional bot API key bootstrap:
+
+- `APP_STATIC_API_KEYS=bot-main:lcak_prod_xxx`
 
 ## 3) Health checks
 

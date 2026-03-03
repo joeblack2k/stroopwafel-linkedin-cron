@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -14,6 +15,7 @@ type Config struct {
 	DBPath            string
 	BasicAuthUser     string
 	BasicAuthPass     string
+	StaticAPIKeys     map[string]string
 	SessionSecure     bool
 	Timezone          string
 	Location          *time.Location
@@ -40,6 +42,7 @@ func Load() (Config, error) {
 		DBPath:            getEnv("APP_DB_PATH", "./data/linkedin-cron.db"),
 		BasicAuthUser:     getEnv("APP_BASIC_AUTH_USER", "admin"),
 		BasicAuthPass:     getEnv("APP_BASIC_AUTH_PASS", "admin"),
+		StaticAPIKeys:     parseStaticAPIKeys(os.Getenv("APP_STATIC_API_KEYS")),
 		SessionSecure:     getEnvBool("APP_SESSION_SECURE", false),
 		Timezone:          timezone,
 		Location:          location,
@@ -110,4 +113,51 @@ func normalizeMode(value string) string {
 		return "facebook-page"
 	}
 	return "dry-run"
+}
+
+func parseStaticAPIKeys(raw string) map[string]string {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return nil
+	}
+
+	replacer := strings.NewReplacer("\n", ",", ";", ",")
+	parts := strings.Split(replacer.Replace(trimmed), ",")
+	parsed := make(map[string]string)
+	unnamedIndex := 0
+
+	for _, part := range parts {
+		item := strings.TrimSpace(part)
+		if item == "" {
+			continue
+		}
+
+		separator := strings.Index(item, ":")
+		if separator < 0 {
+			separator = strings.Index(item, "=")
+		}
+
+		if separator < 0 {
+			unnamedIndex++
+			name := "env-key-" + strconv.Itoa(unnamedIndex)
+			parsed[item] = name
+			continue
+		}
+
+		name := strings.TrimSpace(item[:separator])
+		token := strings.TrimSpace(item[separator+1:])
+		if token == "" {
+			continue
+		}
+		if name == "" {
+			unnamedIndex++
+			name = "env-key-" + strconv.Itoa(unnamedIndex)
+		}
+		parsed[token] = name
+	}
+
+	if len(parsed) == 0 {
+		return nil
+	}
+	return parsed
 }
