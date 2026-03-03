@@ -28,6 +28,7 @@ func UIAuthMiddleware(cfg config.Config, logger *slog.Logger) func(http.Handler)
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if sessionUser, ok := validateUISessionCookie(r, cfg.BasicAuthUser, cfg.BasicAuthPass, time.Now().UTC()); ok {
+				r.Header.Set(requestAuthMethodHeader, "session")
 				ctx := context.WithValue(r.Context(), contextKeyAuthMethod, "session")
 				ctx = context.WithValue(ctx, contextKeyAuthUser, sessionUser)
 				next.ServeHTTP(w, r.WithContext(ctx))
@@ -35,6 +36,7 @@ func UIAuthMiddleware(cfg config.Config, logger *slog.Logger) func(http.Handler)
 			}
 
 			if authUser, ok := basicAuthUserIfValid(r, cfg.BasicAuthUser, cfg.BasicAuthPass); ok {
+				r.Header.Set(requestAuthMethodHeader, "basic")
 				ctx := context.WithValue(r.Context(), contextKeyAuthMethod, "basic")
 				ctx = context.WithValue(ctx, contextKeyAuthUser, authUser)
 				next.ServeHTTP(w, r.WithContext(ctx))

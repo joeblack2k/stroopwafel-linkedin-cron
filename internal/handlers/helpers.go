@@ -41,6 +41,12 @@ const (
 	contextKeyAPIKeyName contextKey = "api_key_name"
 )
 
+const (
+	requestAuthMethodHeader = "X-LC-Auth-Method"
+	requestAPIKeyIDHeader   = "X-LC-API-Key-ID"
+	requestAPIKeyNameHeader = "X-LC-API-Key-Name"
+)
+
 type SettingsStatus struct {
 	BasicAuthConfigured bool   `json:"basic_auth_configured"`
 	MaskedAuthUser      string `json:"masked_auth_user"`
@@ -84,6 +90,7 @@ func BasicAuthMiddleware(username, password string, logger *slog.Logger) func(ht
 				return
 			}
 
+			r.Header.Set(requestAuthMethodHeader, "basic")
 			ctx := context.WithValue(r.Context(), contextKeyAuthMethod, "basic")
 			ctx = context.WithValue(ctx, contextKeyAuthUser, authUser)
 			next.ServeHTTP(w, r.WithContext(ctx))
@@ -95,6 +102,7 @@ func APIAuthMiddleware(username, password string, store *db.Store, staticAPIKeys
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if authUser, ok := basicAuthUserIfValid(r, username, password); ok {
+				r.Header.Set(requestAuthMethodHeader, "basic")
 				ctx := context.WithValue(r.Context(), contextKeyAuthMethod, "basic")
 				ctx = context.WithValue(ctx, contextKeyAuthUser, authUser)
 				next.ServeHTTP(w, r.WithContext(ctx))
@@ -104,6 +112,8 @@ func APIAuthMiddleware(username, password string, store *db.Store, staticAPIKeys
 			token := extractAPIKeyToken(r)
 			if token != "" {
 				if name, ok := staticAPIKeys[token]; ok {
+					r.Header.Set(requestAuthMethodHeader, "api-key-env")
+					r.Header.Set(requestAPIKeyNameHeader, name)
 					ctx := context.WithValue(r.Context(), contextKeyAuthMethod, "api-key-env")
 					ctx = context.WithValue(ctx, contextKeyAPIKeyName, name)
 					next.ServeHTTP(w, r.WithContext(ctx))
@@ -113,6 +123,9 @@ func APIAuthMiddleware(username, password string, store *db.Store, staticAPIKeys
 				if store != nil {
 					apiKey, err := store.AuthenticateAPIKey(r.Context(), token)
 					if err == nil {
+						r.Header.Set(requestAuthMethodHeader, "api-key")
+						r.Header.Set(requestAPIKeyIDHeader, strconv.FormatInt(apiKey.ID, 10))
+						r.Header.Set(requestAPIKeyNameHeader, apiKey.Name)
 						ctx := context.WithValue(r.Context(), contextKeyAuthMethod, "api-key")
 						ctx = context.WithValue(ctx, contextKeyAPIKeyID, apiKey.ID)
 						ctx = context.WithValue(ctx, contextKeyAPIKeyName, apiKey.Name)

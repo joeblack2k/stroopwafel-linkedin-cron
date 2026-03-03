@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -246,6 +247,30 @@ func requestLogger(logger *slog.Logger, next http.Handler) http.Handler {
 		start := time.Now()
 		recorder := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
 		next.ServeHTTP(recorder, r)
+
+		authMethod := handlers.AuthMethodForLog(r.Context())
+		if authMethod == "unknown" {
+			authMethod = strings.TrimSpace(r.Header.Get("X-LC-Auth-Method"))
+			if authMethod == "" {
+				authMethod = "unknown"
+			}
+		}
+
+		apiKeyID := handlers.APIKeyIDForLog(r.Context())
+		if apiKeyID == 0 {
+			rawAPIKeyID := strings.TrimSpace(r.Header.Get("X-LC-API-Key-ID"))
+			if rawAPIKeyID != "" {
+				if parsed, err := strconv.ParseInt(rawAPIKeyID, 10, 64); err == nil {
+					apiKeyID = parsed
+				}
+			}
+		}
+
+		apiKeyName := handlers.APIKeyNameForLog(r.Context())
+		if strings.TrimSpace(apiKeyName) == "" {
+			apiKeyName = strings.TrimSpace(r.Header.Get("X-LC-API-Key-Name"))
+		}
+
 		logger.LogAttrs(
 			r.Context(),
 			slog.LevelInfo,
@@ -255,9 +280,9 @@ func requestLogger(logger *slog.Logger, next http.Handler) http.Handler {
 			slog.String("path", r.URL.Path),
 			slog.Int("status", recorder.status),
 			slog.Int64("duration_ms", time.Since(start).Milliseconds()),
-			slog.String("auth_method", handlers.AuthMethodForLog(r.Context())),
-			slog.Int64("api_key_id", handlers.APIKeyIDForLog(r.Context())),
-			slog.String("api_key_name", handlers.APIKeyNameForLog(r.Context())),
+			slog.String("auth_method", authMethod),
+			slog.Int64("api_key_id", apiKeyID),
+			slog.String("api_key_name", apiKeyName),
 			slog.String("remote_addr", strings.Split(r.RemoteAddr, ":")[0]),
 		)
 	})
