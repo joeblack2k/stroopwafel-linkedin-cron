@@ -121,12 +121,19 @@ curl -X POST http://localhost:8080/api/v1/posts/bulk/channels \
 
 ## Delivery history
 
-Per-post channel attempt history (paginated):
+Per-post channel attempt history (paginated + date-range):
 
 ```bash
 curl -H "X-API-Key: lcak_xxx" \
-  "http://localhost:8080/api/v1/posts/1/attempts?status=retry&limit=50&offset=0"
+  "http://localhost:8080/api/v1/posts/1/attempts?status=retry&attempted_from=2026-03-03T00:00:00Z&attempted_to=2026-03-04T00:00:00Z&limit=50&offset=0"
 ```
+
+Supported attempt filters:
+
+- `status`
+- `channel_id`
+- `attempted_from` (RFC3339)
+- `attempted_to` (RFC3339)
 
 Response shape:
 

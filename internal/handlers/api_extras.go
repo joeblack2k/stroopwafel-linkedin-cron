@@ -73,16 +73,22 @@ func (a *App) APIListPostAttempts(w http.ResponseWriter, r *http.Request) {
 		channelFilter = &parsed
 	}
 
+	attemptedFrom, attemptedTo, err := parseAttemptedRangeRFC3339(r.URL.Query().Get("attempted_from"), r.URL.Query().Get("attempted_to"))
+	if err != nil {
+		writeAPIError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
 	limit := parseLimit(r.URL.Query().Get("limit"), 200)
 	offset := parseOffset(r.URL.Query().Get("offset"), 0)
 
-	total, err := a.Store.CountPublishAttemptsForPost(r.Context(), id, channelFilter, statusFilter)
+	total, err := a.Store.CountPublishAttemptsForPost(r.Context(), id, channelFilter, statusFilter, attemptedFrom, attemptedTo)
 	if err != nil {
 		writeAPIError(w, http.StatusInternalServerError, "failed to count post attempts")
 		return
 	}
 
-	attempts, err := a.Store.ListPublishAttemptsForPost(r.Context(), id, channelFilter, statusFilter, limit, offset)
+	attempts, err := a.Store.ListPublishAttemptsForPost(r.Context(), id, channelFilter, statusFilter, attemptedFrom, attemptedTo, limit, offset)
 	if err != nil {
 		writeAPIError(w, http.StatusInternalServerError, "failed to list post attempts")
 		return

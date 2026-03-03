@@ -47,6 +47,14 @@
           </select>
         </label>
         <label>
+          Attempted from
+          <input type="datetime-local" name="attempted_from" value="{{.AttemptedFrom}}">
+        </label>
+        <label>
+          Attempted to
+          <input type="datetime-local" name="attempted_to" value="{{.AttemptedTo}}">
+        </label>
+        <label>
           Page size
           <select name="page_size">
             <option value="25" {{if eq .PageSize 25}}selected{{end}}>25</option>

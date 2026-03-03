@@ -31,6 +31,8 @@ type PostHistoryPageData struct {
 	Channels          []model.Channel
 	SelectedStatus    string
 	SelectedChannelID int64
+	AttemptedFrom     string
+	AttemptedTo       string
 	Message           string
 	Error             string
 	ReturnTo          string
@@ -82,6 +84,16 @@ func (a *App) PostHistory(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	attemptedFromInput := strings.TrimSpace(r.URL.Query().Get("attempted_from"))
+	attemptedToInput := strings.TrimSpace(r.URL.Query().Get("attempted_to"))
+	attemptedFromFilter, attemptedToFilter, rangeErr := parseAttemptedRangeLocal(attemptedFromInput, attemptedToInput, a.Config.Location)
+	if attemptedFromFilter != nil {
+		attemptedFromInput = attemptedFromFilter.In(a.Config.Location).Format("2006-01-02T15:04")
+	}
+	if attemptedToFilter != nil {
+		attemptedToInput = attemptedToFilter.In(a.Config.Location).Format("2006-01-02T15:04")
+	}
+
 	channels, err := a.Store.ListChannelsForPost(r.Context(), id)
 	if err != nil {
 		http.Error(w, "failed to load channels", http.StatusInternalServerError)
@@ -95,13 +107,18 @@ func (a *App) PostHistory(w http.ResponseWriter, r *http.Request) {
 	page := parsePage(r.URL.Query().Get("page"), 1)
 	offset := (page - 1) * pageSize
 
-	totalAttempts, err := a.Store.CountPublishAttemptsForPost(r.Context(), id, channelFilter, selectedStatus)
+	if rangeErr != nil {
+		attemptedFromFilter = nil
+		attemptedToFilter = nil
+	}
+
+	totalAttempts, err := a.Store.CountPublishAttemptsForPost(r.Context(), id, channelFilter, selectedStatus, attemptedFromFilter, attemptedToFilter)
 	if err != nil {
 		http.Error(w, "failed to count attempts", http.StatusInternalServerError)
 		return
 	}
 
-	attempts, err := a.Store.ListPublishAttemptsForPost(r.Context(), id, channelFilter, selectedStatus, pageSize, offset)
+	attempts, err := a.Store.ListPublishAttemptsForPost(r.Context(), id, channelFilter, selectedStatus, attemptedFromFilter, attemptedToFilter, pageSize, offset)
 	if err != nil {
 		http.Error(w, "failed to load attempts", http.StatusInternalServerError)
 		return
@@ -147,6 +164,15 @@ func (a *App) PostHistory(w http.ResponseWriter, r *http.Request) {
 	}
 	nextPage := page + 1
 
+	errorMessage := strings.TrimSpace(r.URL.Query().Get("err"))
+	if rangeErr != nil {
+		if errorMessage == "" {
+			errorMessage = rangeErr.Error()
+		} else {
+			errorMessage = errorMessage + "; " + rangeErr.Error()
+		}
+	}
+
 	data := PostHistoryPageData{
 		Title:             "Post History",
 		Post:              post,
@@ -154,8 +180,10 @@ func (a *App) PostHistory(w http.ResponseWriter, r *http.Request) {
 		Channels:          channels,
 		SelectedStatus:    selectedStatus,
 		SelectedChannelID: selectedChannelID,
+		AttemptedFrom:     attemptedFromInput,
+		AttemptedTo:       attemptedToInput,
 		Message:           strings.TrimSpace(r.URL.Query().Get("msg")),
-		Error:             strings.TrimSpace(r.URL.Query().Get("err")),
+		Error:             errorMessage,
 		ReturnTo:          returnTo,
 		Page:              page,
 		PageSize:          pageSize,
@@ -163,11 +191,18 @@ func (a *App) PostHistory(w http.ResponseWriter, r *http.Request) {
 		HasPrevPage:       hasPrevPage,
 		HasNextPage:       hasNextPage,
 	}
+
+	attemptedFromForLinks := attemptedFromInput
+	attemptedToForLinks := attemptedToInput
+	if rangeErr != nil {
+		attemptedFromForLinks = ""
+		attemptedToForLinks = ""
+	}
 	if hasPrevPage {
-		data.PrevPageURL = buildPostHistoryPageURL(id, returnTo, selectedStatus, selectedChannelID, prevPage, pageSize)
+		data.PrevPageURL = buildPostHistoryPageURL(id, returnTo, selectedStatus, selectedChannelID, attemptedFromForLinks, attemptedToForLinks, prevPage, pageSize)
 	}
 	if hasNextPage {
-		data.NextPageURL = buildPostHistoryPageURL(id, returnTo, selectedStatus, selectedChannelID, nextPage, pageSize)
+		data.NextPageURL = buildPostHistoryPageURL(id, returnTo, selectedStatus, selectedChannelID, attemptedFromForLinks, attemptedToForLinks, nextPage, pageSize)
 	}
 
 	if err := a.Renderer.Render(w, "post_history.html", data); err != nil {
@@ -309,7 +344,7 @@ func parsePage(value string, fallback int) int {
 	return parsed
 }
 
-func buildPostHistoryPageURL(postID int64, returnTo, status string, channelID int64, page, pageSize int) string {
+func buildPostHistoryPageURL(postID int64, returnTo, status string, channelID int64, attemptedFrom, attemptedTo string, page, pageSize int) string {
 	values := url.Values{}
 	if returnTo != "" {
 		values.Set("return_to", returnTo)
@@ -319,6 +354,12 @@ func buildPostHistoryPageURL(postID int64, returnTo, status string, channelID in
 	}
 	if channelID > 0 {
 		values.Set("channel_id", strconv.FormatInt(channelID, 10))
+	}
+	if strings.TrimSpace(attemptedFrom) != "" {
+		values.Set("attempted_from", strings.TrimSpace(attemptedFrom))
+	}
+	if strings.TrimSpace(attemptedTo) != "" {
+		values.Set("attempted_to", strings.TrimSpace(attemptedTo))
 	}
 	if page > 1 {
 		values.Set("page", strconv.Itoa(page))

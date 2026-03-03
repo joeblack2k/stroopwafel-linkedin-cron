@@ -157,7 +157,7 @@ Notes:
 - posts support `channel_ids` for assignment
 - scheduled posts require at least one channel
 - channel responses include explicit masked previews in `secret_preview` and presence booleans in `secret_presence`
-- `GET /api/v1/posts/{id}/attempts` is paginated (`limit`, `offset`) and returns `{items, pagination}`
+- `GET /api/v1/posts/{id}/attempts` supports `status`, `channel_id`, `attempted_from`, `attempted_to`, plus pagination (`limit`, `offset`) and returns `{items, pagination}`
 - `GET /api/v1/channels/{id}/audit` is paginated (`limit`, `offset`) and returns `{items, pagination}`
 
 ## Scheduler & Retry Behavior

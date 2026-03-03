@@ -298,6 +298,36 @@ func parseRFC3339(value string) (*time.Time, error) {
 	return &utc, nil
 }
 
+func parseAttemptedRangeRFC3339(fromValue, toValue string) (*time.Time, *time.Time, error) {
+	attemptedFrom, err := parseRFC3339(fromValue)
+	if err != nil {
+		return nil, nil, fmt.Errorf("invalid attempted_from; expected RFC3339")
+	}
+	attemptedTo, err := parseRFC3339(toValue)
+	if err != nil {
+		return nil, nil, fmt.Errorf("invalid attempted_to; expected RFC3339")
+	}
+	if attemptedFrom != nil && attemptedTo != nil && attemptedFrom.After(*attemptedTo) {
+		return nil, nil, fmt.Errorf("attempted_from must be before or equal to attempted_to")
+	}
+	return attemptedFrom, attemptedTo, nil
+}
+
+func parseAttemptedRangeLocal(fromValue, toValue string, location *time.Location) (*time.Time, *time.Time, error) {
+	attemptedFrom, err := parseDateTimeLocal(fromValue, location)
+	if err != nil {
+		return nil, nil, fmt.Errorf("invalid attempted_from; expected YYYY-MM-DDTHH:MM")
+	}
+	attemptedTo, err := parseDateTimeLocal(toValue, location)
+	if err != nil {
+		return nil, nil, fmt.Errorf("invalid attempted_to; expected YYYY-MM-DDTHH:MM")
+	}
+	if attemptedFrom != nil && attemptedTo != nil && attemptedFrom.After(*attemptedTo) {
+		return nil, nil, fmt.Errorf("attempted_from must be before or equal to attempted_to")
+	}
+	return attemptedFrom, attemptedTo, nil
+}
+
 func writeJSON(w http.ResponseWriter, status int, payload any) {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.WriteHeader(status)

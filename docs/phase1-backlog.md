@@ -78,8 +78,9 @@ Bring the product closer to Postiz by introducing channel management and post-to
    - Added explicit secret masking metadata to channel API responses (`secret_preview`, `secret_presence`)
    - Added structured audit metadata viewer on `/settings/channels/{id}/edit` (parsed JSON + raw fallback)
 
-2. **History UX polish (next)**
-   - Date-range filtering for large histories
+2. **History UX polish (phase 2 implemented)**
+   - Added date-range filtering (`attempted_from`, `attempted_to`) for `/api/v1/posts/{id}/attempts`
+   - Added date-range controls on `/posts/{id}/history`
 
 3. **Bulk UX polish (next)**
    - Saved selections, safer confirmation UX, and partial-failure retry helpers

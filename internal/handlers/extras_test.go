@@ -125,6 +125,117 @@ func TestAPIListPostAttemptsReturnsPaginatedAttempts(t *testing.T) {
 	}
 }
 
+func TestAPIListPostAttemptsDateRangeFilter(t *testing.T) {
+	t.Parallel()
+
+	app := newAPIApp(t)
+	channel := mustCreateDryRunChannel(t, app.Store)
+
+	now := time.Date(2026, 3, 3, 12, 0, 0, 0, time.UTC)
+	post, err := app.Store.CreatePost(context.Background(), db.PostInput{
+		Text:        "attempt range",
+		Status:      model.StatusScheduled,
+		ScheduledAt: ptrTimeForTest(now.Add(-1 * time.Minute)),
+	})
+	if err != nil {
+		t.Fatalf("create post: %v", err)
+	}
+	if err := app.Store.ReplacePostChannels(context.Background(), post.ID, []int64{channel.ID}); err != nil {
+		t.Fatalf("assign channels: %v", err)
+	}
+
+	attemptOne := now.Add(-2 * time.Hour)
+	attemptTwo := now.Add(-1 * time.Hour)
+	attemptThree := now
+	if _, err := app.Store.InsertPublishAttempt(context.Background(), db.PublishAttemptInput{
+		PostID:      post.ID,
+		ChannelID:   channel.ID,
+		AttemptNo:   1,
+		AttemptedAt: attemptOne,
+		Status:      model.PublishAttemptStatusSent,
+	}); err != nil {
+		t.Fatalf("insert attempt 1: %v", err)
+	}
+	if _, err := app.Store.InsertPublishAttempt(context.Background(), db.PublishAttemptInput{
+		PostID:      post.ID,
+		ChannelID:   channel.ID,
+		AttemptNo:   2,
+		AttemptedAt: attemptTwo,
+		Status:      model.PublishAttemptStatusRetry,
+	}); err != nil {
+		t.Fatalf("insert attempt 2: %v", err)
+	}
+	if _, err := app.Store.InsertPublishAttempt(context.Background(), db.PublishAttemptInput{
+		PostID:      post.ID,
+		ChannelID:   channel.ID,
+		AttemptNo:   3,
+		AttemptedAt: attemptThree,
+		Status:      model.PublishAttemptStatusFailed,
+	}); err != nil {
+		t.Fatalf("insert attempt 3: %v", err)
+	}
+
+	attemptedFrom := now.Add(-90 * time.Minute).Format(time.RFC3339)
+	attemptedTo := now.Add(-30 * time.Minute).Format(time.RFC3339)
+	path := "/api/v1/posts/" + strconv.FormatInt(post.ID, 10) + "/attempts?attempted_from=" + attemptedFrom + "&attempted_to=" + attemptedTo
+	request := httptest.NewRequest(http.MethodGet, path, nil)
+	request.SetPathValue("id", strconv.FormatInt(post.ID, 10))
+	recorder := httptest.NewRecorder()
+	app.APIListPostAttempts(recorder, request)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d (%s)", recorder.Code, recorder.Body.String())
+	}
+
+	var payload struct {
+		Items []struct {
+			AttemptNo int `json:"attempt_no"`
+		} `json:"items"`
+		Pagination struct {
+			Total int `json:"total"`
+		} `json:"pagination"`
+	}
+	if err := json.Unmarshal(recorder.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("decode payload: %v", err)
+	}
+	if payload.Pagination.Total != 1 {
+		t.Fatalf("expected filtered total=1, got %d", payload.Pagination.Total)
+	}
+	if len(payload.Items) != 1 {
+		t.Fatalf("expected one filtered attempt, got %d", len(payload.Items))
+	}
+	if payload.Items[0].AttemptNo != 2 {
+		t.Fatalf("expected attempt_no=2 in filtered result, got %d", payload.Items[0].AttemptNo)
+	}
+}
+
+func TestAPIListPostAttemptsRejectsInvalidDateRange(t *testing.T) {
+	t.Parallel()
+
+	app := newAPIApp(t)
+	post, err := app.Store.CreatePost(context.Background(), db.PostInput{Text: "range validation", Status: model.StatusDraft})
+	if err != nil {
+		t.Fatalf("create post: %v", err)
+	}
+
+	path := "/api/v1/posts/" + strconv.FormatInt(post.ID, 10) + "/attempts?attempted_from=2026-03-03T12:00:00Z&attempted_to=2026-03-03T11:00:00Z"
+	request := httptest.NewRequest(http.MethodGet, path, nil)
+	request.SetPathValue("id", strconv.FormatInt(post.ID, 10))
+	recorder := httptest.NewRecorder()
+	app.APIListPostAttempts(recorder, request)
+	if recorder.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for invalid range, got %d (%s)", recorder.Code, recorder.Body.String())
+	}
+
+	var payload map[string]any
+	if err := json.Unmarshal(recorder.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("decode error payload: %v", err)
+	}
+	errMessage, _ := payload["error"].(string)
+	if !strings.Contains(errMessage, "attempted_from") {
+		t.Fatalf("expected attempted_from validation error, got %q", errMessage)
+	}
+}
+
 func TestAPIListChannelAuditEvents(t *testing.T) {
 	t.Parallel()
 
