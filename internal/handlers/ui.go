@@ -518,6 +518,10 @@ func (a *App) parsePostForm(r *http.Request) (db.PostInput, PostFormInput, error
 		return db.PostInput{}, PostFormInput{ScheduledAt: scheduledAtRaw, Text: text, Status: string(status), MediaURL: mediaURLRaw, ChannelIDs: channelIDs}, err
 	}
 
+	if status == model.StatusScheduled && len(channelIDs) == 0 {
+		return db.PostInput{}, PostFormInput{ScheduledAt: scheduledAtRaw, Text: text, Status: string(status), MediaURL: mediaURLRaw, ChannelIDs: channelIDs}, errors.New("at least one channel is required when status is scheduled")
+	}
+
 	return db.PostInput{ScheduledAt: parsedScheduledAt, Text: text, Status: status, MediaURL: mediaURL}, PostFormInput{ScheduledAt: scheduledAtRaw, Text: text, Status: string(status), MediaURL: mediaURLRaw, ChannelIDs: channelIDs}, nil
 }
 

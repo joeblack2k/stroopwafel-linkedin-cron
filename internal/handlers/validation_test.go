@@ -25,6 +25,7 @@ func TestAPICreatePostValidation(t *testing.T) {
 	t.Parallel()
 
 	app := newAPIApp(t)
+	channel := mustCreateDryRunChannel(t, app.Store)
 
 	invalidPayload := map[string]any{
 		"text":   "post body",
@@ -44,10 +45,21 @@ func TestAPICreatePostValidation(t *testing.T) {
 		t.Fatalf("expected 400 for missing scheduled_at, got %d", recorder.Code)
 	}
 
+	missingChannelPayload := map[string]any{
+		"text":         "hello world",
+		"status":       "scheduled",
+		"scheduled_at": time.Now().UTC().Add(10 * time.Minute).Format(time.RFC3339),
+	}
+	recorder = performJSONRequest(t, http.MethodPost, "/api/v1/posts", missingChannelPayload, app.APICreatePost)
+	if recorder.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for missing channel_ids on scheduled post, got %d", recorder.Code)
+	}
+
 	validPayload := map[string]any{
 		"text":         "hello world",
 		"status":       "scheduled",
 		"scheduled_at": time.Now().UTC().Add(10 * time.Minute).Format(time.RFC3339),
+		"channel_ids":  []int64{channel.ID},
 	}
 	recorder = performJSONRequest(t, http.MethodPost, "/api/v1/posts", validPayload, app.APICreatePost)
 	if recorder.Code != http.StatusCreated {
@@ -59,6 +71,7 @@ func TestAPIUpdatePostValidation(t *testing.T) {
 	t.Parallel()
 
 	app := newAPIApp(t)
+	channel := mustCreateDryRunChannel(t, app.Store)
 	created, err := app.Store.CreatePost(context.Background(), db.PostInput{
 		Text:        "draft post",
 		Status:      model.StatusDraft,
@@ -79,6 +92,16 @@ func TestAPIUpdatePostValidation(t *testing.T) {
 		t.Fatalf("expected 400 for invalid update payload, got %d", recorder.Code)
 	}
 
+	missingChannelUpdate := map[string]any{
+		"text":         "updated",
+		"status":       "scheduled",
+		"scheduled_at": time.Now().UTC().Add(30 * time.Minute).Format(time.RFC3339),
+	}
+	recorder = performJSONRequest(t, http.MethodPut, path, missingChannelUpdate, app.APIUpdatePost)
+	if recorder.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for scheduled update without channels, got %d", recorder.Code)
+	}
+
 	validUpdate := map[string]any{
 		"text":      "updated",
 		"status":    "draft",
@@ -87,6 +110,17 @@ func TestAPIUpdatePostValidation(t *testing.T) {
 	recorder = performJSONRequest(t, http.MethodPut, path, validUpdate, app.APIUpdatePost)
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("expected 200 for valid update payload, got %d", recorder.Code)
+	}
+
+	validScheduledUpdate := map[string]any{
+		"text":         "scheduled update",
+		"status":       "scheduled",
+		"scheduled_at": time.Now().UTC().Add(60 * time.Minute).Format(time.RFC3339),
+		"channel_ids":  []int64{channel.ID},
+	}
+	recorder = performJSONRequest(t, http.MethodPut, path, validScheduledUpdate, app.APIUpdatePost)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected 200 for valid scheduled update payload, got %d", recorder.Code)
 	}
 }
 
@@ -114,6 +148,18 @@ func newAPIApp(t *testing.T) *App {
 		Logger:          logger,
 		ActivePublisher: "dry-run",
 	}
+}
+
+func mustCreateDryRunChannel(t *testing.T, store *db.Store) model.Channel {
+	t.Helper()
+	channel, err := store.CreateChannel(context.Background(), db.ChannelInput{
+		Type:        model.ChannelTypeDryRun,
+		DisplayName: "Dry Run",
+	})
+	if err != nil {
+		t.Fatalf("create channel: %v", err)
+	}
+	return channel
 }
 
 func performJSONRequest(t *testing.T, method, target string, payload any, handler func(http.ResponseWriter, *http.Request)) *httptest.ResponseRecorder {

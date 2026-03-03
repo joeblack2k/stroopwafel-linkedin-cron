@@ -115,3 +115,62 @@ func TestPublishUnconfigured(t *testing.T) {
 func testLogger() *slog.Logger {
 	return slog.New(slog.NewJSONHandler(io.Discard, nil))
 }
+
+func TestProbeSuccess(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			t.Fatalf("expected GET, got %s", r.Method)
+		}
+		if r.URL.Path != "/123456" {
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+		}
+		if r.URL.Query().Get("fields") != "id,name" {
+			t.Fatalf("unexpected fields query: %s", r.URL.Query().Get("fields"))
+		}
+		if r.URL.Query().Get("access_token") != "page-token" {
+			t.Fatalf("unexpected token query")
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"id":"123456","name":"Test Page"}`))
+	}))
+	t.Cleanup(server.Close)
+
+	pub := NewPublisher(server.URL, "page-token", "123456", testLogger())
+	if err := pub.Probe(context.Background()); err != nil {
+		t.Fatalf("probe should succeed: %v", err)
+	}
+}
+
+func TestProbeFailureRetryable(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusTooManyRequests)
+		_, _ = w.Write([]byte(`{"error":{"message":"rate limited"}}`))
+	}))
+	t.Cleanup(server.Close)
+
+	pub := NewPublisher(server.URL, "page-token", "123456", testLogger())
+	err := pub.Probe(context.Background())
+	if err == nil {
+		t.Fatal("expected probe error")
+	}
+	if !publisher.IsRetryable(err) {
+		t.Fatal("expected retryable probe error")
+	}
+}
+
+func TestProbeUnconfigured(t *testing.T) {
+	t.Parallel()
+
+	pub := NewPublisher("", "", "", testLogger())
+	err := pub.Probe(context.Background())
+	if err == nil {
+		t.Fatal("expected probe error")
+	}
+	if publisher.IsRetryable(err) {
+		t.Fatal("expected non-retryable probe error")
+	}
+}

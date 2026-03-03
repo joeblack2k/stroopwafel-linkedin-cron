@@ -121,6 +121,37 @@ func (s *Store) ListChannels(ctx context.Context) ([]model.Channel, error) {
 	return channels, nil
 }
 
+func (s *Store) ListChannelsForPost(ctx context.Context, postID int64) ([]model.Channel, error) {
+	rows, err := s.db.QueryContext(
+		ctx,
+		`SELECT c.id, c.type, c.display_name, c.status, c.created_at, c.updated_at, c.last_test_at, c.last_error,
+			c.linkedin_access_token, c.linkedin_author_urn, c.linkedin_api_base_url,
+			c.facebook_page_access_token, c.facebook_page_id, c.facebook_api_base_url
+		 FROM channels c
+		 INNER JOIN post_channels pc ON pc.channel_id = c.id
+		 WHERE pc.post_id = ?
+		 ORDER BY c.id ASC`,
+		postID,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("list channels for post %d: %w", postID, err)
+	}
+	defer rows.Close()
+
+	channels := make([]model.Channel, 0)
+	for rows.Next() {
+		channel, err := scanChannel(rows)
+		if err != nil {
+			return nil, fmt.Errorf("scan channel for post row: %w", err)
+		}
+		channels = append(channels, channel)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate channels for post rows: %w", err)
+	}
+	return channels, nil
+}
+
 func (s *Store) DeleteChannel(ctx context.Context, id int64) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -160,14 +191,27 @@ func (s *Store) TestChannel(ctx context.Context, id int64) (model.Channel, error
 	}
 
 	status := model.ChannelStatusActive
-	var lastError any
+	var lastError *string
 	if validationErr := validateLoadedChannel(channel); validationErr != nil {
 		status = model.ChannelStatusError
-		lastError = validationErr.Error()
+		message := validationErr.Error()
+		lastError = &message
 	}
-	now := time.Now().UTC()
 
-	if _, err := s.db.ExecContext(
+	return s.SetChannelTestResult(ctx, id, status, lastError)
+}
+
+func (s *Store) SetChannelTestResult(ctx context.Context, id int64, status string, lastError *string) (model.Channel, error) {
+	now := time.Now().UTC()
+	var lastErrorValue any
+	if lastError != nil {
+		trimmed := strings.TrimSpace(*lastError)
+		if trimmed != "" {
+			lastErrorValue = trimmed
+		}
+	}
+
+	result, err := s.db.ExecContext(
 		ctx,
 		`UPDATE channels
 		 SET status = ?, updated_at = ?, last_test_at = ?, last_error = ?
@@ -175,10 +219,18 @@ func (s *Store) TestChannel(ctx context.Context, id int64) (model.Channel, error
 		status,
 		formatDBTime(now),
 		formatDBTime(now),
-		lastError,
+		lastErrorValue,
 		id,
-	); err != nil {
+	)
+	if err != nil {
 		return model.Channel{}, fmt.Errorf("update test status for channel %d: %w", id, err)
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return model.Channel{}, fmt.Errorf("read rows affected for test status channel %d: %w", id, err)
+	}
+	if affected == 0 {
+		return model.Channel{}, ErrNotFound
 	}
 
 	return s.GetChannel(ctx, id)

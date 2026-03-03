@@ -42,6 +42,43 @@ func (p *Publisher) Configured() bool {
 	return p.token != "" && p.authorURN != "" && p.baseURL != ""
 }
 
+func (p *Publisher) Probe(ctx context.Context) error {
+	if !p.Configured() {
+		return &publisher.PublishError{Err: fmt.Errorf("linkedin publisher is not configured"), Retryable: false}
+	}
+	if !strings.HasPrefix(p.authorURN, "urn:li:") {
+		return &publisher.PublishError{Err: errors.New("linkedin_author_urn must start with urn:li:"), Retryable: false}
+	}
+
+	endpoint := p.baseURL + "/v2/userinfo"
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return &publisher.PublishError{Err: fmt.Errorf("build linkedin probe request: %w", err), Retryable: true}
+	}
+	request.Header.Set("Authorization", "Bearer "+p.token)
+	request.Header.Set("Accept", "application/json")
+
+	response, err := p.httpClient.Do(request)
+	if err != nil {
+		return &publisher.PublishError{Err: fmt.Errorf("linkedin probe request failed: %w", err), Retryable: true}
+	}
+	defer response.Body.Close()
+
+	bodyBytes, _ := io.ReadAll(io.LimitReader(response.Body, 8*1024))
+	bodyText := strings.TrimSpace(string(bodyBytes))
+
+	if response.StatusCode >= 200 && response.StatusCode < 300 {
+		return nil
+	}
+
+	retryable := response.StatusCode == http.StatusTooManyRequests || response.StatusCode >= 500
+	errMessage := fmt.Sprintf("linkedin probe failed (%d)", response.StatusCode)
+	if bodyText != "" {
+		errMessage += ": " + bodyText
+	}
+	return &publisher.PublishError{Err: errors.New(errMessage), Retryable: retryable}
+}
+
 func (p *Publisher) Publish(ctx context.Context, post model.Post) (publisher.PublishResult, error) {
 	if !p.Configured() {
 		return publisher.PublishResult{}, &publisher.PublishError{Err: fmt.Errorf("linkedin publisher is not configured"), Retryable: false}

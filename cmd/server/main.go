@@ -16,6 +16,7 @@ import (
 	"linkedin-cron/internal/facebook"
 	"linkedin-cron/internal/handlers"
 	"linkedin-cron/internal/linkedin"
+	"linkedin-cron/internal/model"
 	"linkedin-cron/internal/publisher"
 	"linkedin-cron/internal/scheduler"
 	"linkedin-cron/internal/views"
@@ -51,6 +52,9 @@ func main() {
 	store := db.NewStore(database)
 	pub, activeMode := buildPublisher(cfg, logger)
 	schedulerService := scheduler.NewService(store, pub, logger)
+	schedulerService.SetChannelPublisherResolver(func(channel model.Channel) publisher.Publisher {
+		return buildChannelPublisher(channel, logger)
+	})
 
 	renderer, err := views.NewRenderer(filepath.Join("web", "templates", "*.html"))
 	if err != nil {
@@ -171,6 +175,44 @@ func buildPublisher(cfg config.Config, logger *slog.Logger) (publisher.Publisher
 
 	dryRun := publisher.NewDryRunPublisher(logger)
 	return dryRun, dryRun.Mode()
+}
+
+func buildChannelPublisher(channel model.Channel, logger *slog.Logger) publisher.Publisher {
+	switch channel.Type {
+	case model.ChannelTypeLinkedIn:
+		baseURL := strings.TrimSpace(derefNullableString(channel.LinkedInAPIBaseURL))
+		if baseURL == "" {
+			baseURL = "https://api.linkedin.com"
+		}
+		return linkedin.NewPublisher(
+			baseURL,
+			derefNullableString(channel.LinkedInAccessToken),
+			derefNullableString(channel.LinkedInAuthorURN),
+			logger,
+		)
+	case model.ChannelTypeFacebook:
+		baseURL := strings.TrimSpace(derefNullableString(channel.FacebookAPIBaseURL))
+		if baseURL == "" {
+			baseURL = "https://graph.facebook.com/v22.0"
+		}
+		return facebook.NewPublisher(
+			baseURL,
+			derefNullableString(channel.FacebookPageAccessToken),
+			derefNullableString(channel.FacebookPageID),
+			logger,
+		)
+	case model.ChannelTypeDryRun:
+		return publisher.NewDryRunPublisher(logger)
+	default:
+		return nil
+	}
+}
+
+func derefNullableString(value *string) string {
+	if value == nil {
+		return ""
+	}
+	return *value
 }
 
 func requestLogger(logger *slog.Logger, next http.Handler) http.Handler {

@@ -204,3 +204,39 @@ td {
   padding: 0.55rem;
   text-align: left;
 }
+
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+  gap: 0.6rem;
+  margin: 1rem 0;
+}
+
+.stat-card {
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 0.4rem;
+  padding: 0.7rem;
+}
+
+.stat-card h3 {
+  margin: 0;
+  font-size: 0.85rem;
+  color: #475569;
+}
+
+.stat-card p {
+  margin: 0.35rem 0 0;
+  font-size: 1.2rem;
+  font-weight: 600;
+}
+
+.stat-card.ok {
+  border-color: #86efac;
+  background: #f0fdf4;
+}
+
+.stat-card.warn {
+  border-color: #fca5a5;
+  background: #fef2f2;
+}

@@ -234,7 +234,12 @@ func parsePostPayload(payload postPayload) (db.PostInput, []int64, error) {
 		return db.PostInput{}, nil, err
 	}
 
-	return db.PostInput{ScheduledAt: scheduledAt, Text: text, Status: status, MediaURL: mediaURL}, dedupeChannelIDs(payload.ChannelIDs), nil
+	channelIDs := dedupeChannelIDs(payload.ChannelIDs)
+	if status == model.StatusScheduled && len(channelIDs) == 0 {
+		return db.PostInput{}, nil, errors.New("at least one channel is required when status is scheduled")
+	}
+
+	return db.PostInput{ScheduledAt: scheduledAt, Text: text, Status: status, MediaURL: mediaURL}, channelIDs, nil
 }
 
 func (a *App) mapPostResponse(ctx context.Context, post model.Post) (postResponse, error) {

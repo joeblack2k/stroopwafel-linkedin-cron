@@ -49,6 +49,12 @@ func TestMigrateBootstrapsSchema(t *testing.T) {
 	if tableCount != 1 {
 		t.Fatalf("expected post_channels table to exist, got count=%d", tableCount)
 	}
+	if err := database.QueryRow(`SELECT COUNT(1) FROM sqlite_master WHERE type='table' AND name='publish_attempts'`).Scan(&tableCount); err != nil {
+		t.Fatalf("query publish_attempts table: %v", err)
+	}
+	if tableCount != 1 {
+		t.Fatalf("expected publish_attempts table to exist, got count=%d", tableCount)
+	}
 
 	var columnCount int
 	if err := database.QueryRow(`SELECT COUNT(1) FROM pragma_table_info('posts') WHERE name='next_retry_at'`).Scan(&columnCount); err != nil {
@@ -70,7 +76,7 @@ func TestMigrateBootstrapsSchema(t *testing.T) {
 	if err := database.QueryRow(`SELECT COUNT(1) FROM schema_migrations`).Scan(&migrationCount); err != nil {
 		t.Fatalf("count schema migrations: %v", err)
 	}
-	if migrationCount < 3 {
-		t.Fatalf("expected at least 3 migrations recorded, got %d", migrationCount)
+	if migrationCount < 4 {
+		t.Fatalf("expected at least 4 migrations recorded, got %d", migrationCount)
 	}
 }

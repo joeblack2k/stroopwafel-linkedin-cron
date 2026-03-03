@@ -19,6 +19,7 @@ A lightweight Go monolith to draft, schedule, and publish social posts (LinkedIn
 - `internal/linkedin`: LinkedIn HTTP publisher (config-gated)
 - `internal/facebook`: Facebook Page Graph API publisher (config-gated)
 - `channels` and `post_channels` DB model to manage publish channels via GUI/API
+- `publish_attempts` table for per-channel delivery history and retry state
 
 ## Agent Docs
 
@@ -138,6 +139,7 @@ Notes:
 - timestamps are RFC3339
 - API errors use `{ "error": "..." }`
 - posts support `channel_ids` for assignment
+- scheduled posts require at least one channel
 
 ## Scheduler & Retry Behavior
 
@@ -147,6 +149,8 @@ Every run selects posts where:
 - or `next_retry_at <= now`
 
 Batch size is 100 per run.
+
+For posts with channel assignments, the scheduler executes each `(post, channel)` target independently and writes attempt rows to `publish_attempts`. Post status is reconciled from channel results.
 
 Retry policy for publish failures:
 
@@ -161,6 +165,7 @@ Retry policy for publish failures:
 `linkedin` mode is optional and config-gated.
 
 - LinkedIn publishing APIs may require specific product access and approvals.
+- Channel tests use a live token probe (`/v2/userinfo`) from `/settings/channels` and `/api/v1/channels/{id}/test`.
 - For development/testing, `dry-run` mode logs intended publish actions and marks success in scheduler flow.
 
 ## Facebook Page Publishing Notes
@@ -170,6 +175,7 @@ Retry policy for publish failures:
 - Requires a valid Facebook Page access token (`FACEBOOK_PAGE_ACCESS_TOKEN`) and page ID (`FACEBOOK_PAGE_ID`).
 - The publisher posts to `/{page-id}/feed` on the configured Graph API base URL.
 - 429/5xx responses are treated as retryable; other API errors are treated as terminal.
+- Channel tests use a live page probe (`/{page-id}?fields=id,name`) from `/settings/channels` and `/api/v1/channels/{id}/test`.
 
 ## Debian/Ubuntu Deployment (systemd)
 

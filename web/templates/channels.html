@@ -22,17 +22,50 @@
     {{if .Message}}<div class="notice success">{{.Message}}</div>{{end}}
     {{if .Error}}<div class="notice error">{{.Error}}</div>{{end}}
 
+    <section class="stats-grid">
+      <article class="stat-card">
+        <h3>Total</h3>
+        <p>{{.Stats.Total}}</p>
+      </article>
+      <article class="stat-card ok">
+        <h3>Active</h3>
+        <p>{{.Stats.Active}}</p>
+      </article>
+      <article class="stat-card warn">
+        <h3>Error</h3>
+        <p>{{.Stats.Error}}</p>
+      </article>
+      <article class="stat-card">
+        <h3>Disabled</h3>
+        <p>{{.Stats.Disabled}}</p>
+      </article>
+      <article class="stat-card">
+        <h3>LinkedIn</h3>
+        <p>{{.Stats.LinkedIn}}</p>
+      </article>
+      <article class="stat-card">
+        <h3>Facebook</h3>
+        <p>{{.Stats.Facebook}}</p>
+      </article>
+      <article class="stat-card">
+        <h3>Dry-Run</h3>
+        <p>{{.Stats.DryRun}}</p>
+      </article>
+    </section>
+
     <section class="actions">
       <h3>Add channel</h3>
       <form method="post" action="/settings/channels" class="stack">
         <label>
           Type
-          <select name="type" required>
+          <select id="channel-type" name="type" required>
             <option value="linkedin" {{if eq .Form.Type "linkedin"}}selected{{end}}>linkedin</option>
             <option value="facebook-page" {{if eq .Form.Type "facebook-page"}}selected{{end}}>facebook-page</option>
             <option value="dry-run" {{if or (eq .Form.Type "") (eq .Form.Type "dry-run")}}selected{{end}}>dry-run</option>
           </select>
         </label>
+
+        <p id="channel-type-hint" class="muted"></p>
 
         <label>
           Display name
@@ -41,12 +74,12 @@
 
         <label>
           LinkedIn access token
-          <input type="password" name="linkedin_access_token" value="{{.Form.LinkedInAccessToken}}" placeholder="Optional unless type=linkedin">
+          <input type="password" name="linkedin_access_token" value="{{.Form.LinkedInAccessToken}}" placeholder="Required when type=linkedin">
         </label>
 
         <label>
           LinkedIn author URN
-          <input type="text" name="linkedin_author_urn" value="{{.Form.LinkedInAuthorURN}}" placeholder="urn:li:person:...">
+          <input type="text" name="linkedin_author_urn" value="{{.Form.LinkedInAuthorURN}}" placeholder="urn:li:person:... or urn:li:organization:...">
         </label>
 
         <label>
@@ -56,7 +89,7 @@
 
         <label>
           Facebook page access token
-          <input type="password" name="facebook_page_access_token" value="{{.Form.FacebookPageAccessToken}}" placeholder="Optional unless type=facebook-page">
+          <input type="password" name="facebook_page_access_token" value="{{.Form.FacebookPageAccessToken}}" placeholder="Required when type=facebook-page">
         </label>
 
         <label>
@@ -129,5 +162,26 @@
       </table>
     </section>
   </main>
+
+  <script>
+    (function () {
+      const typeSelect = document.getElementById('channel-type');
+      const hint = document.getElementById('channel-type-hint');
+      if (!typeSelect || !hint) return;
+
+      const hints = {
+        'linkedin': 'LinkedIn requires access token + author URN. Test runs a live token probe endpoint.',
+        'facebook-page': 'Facebook requires page access token + page ID. Test runs a live page probe endpoint.',
+        'dry-run': 'Dry-run stores channel metadata only and always validates without external API calls.'
+      };
+
+      const renderHint = () => {
+        hint.textContent = hints[typeSelect.value] || 'Choose a type to see validation requirements.';
+      };
+
+      typeSelect.addEventListener('change', renderHint);
+      renderHint();
+    })();
+  </script>
 </body>
 </html>

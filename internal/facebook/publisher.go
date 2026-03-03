@@ -55,6 +55,44 @@ func (p *Publisher) Configured() bool {
 	return p.baseURL != "" && p.pageToken != "" && p.pageID != ""
 }
 
+func (p *Publisher) Probe(ctx context.Context) error {
+	if !p.Configured() {
+		return &publisher.PublishError{Err: fmt.Errorf("facebook page publisher is not configured"), Retryable: false}
+	}
+
+	query := url.Values{}
+	query.Set("fields", "id,name")
+	query.Set("access_token", p.pageToken)
+
+	endpoint := fmt.Sprintf("%s/%s?%s", p.baseURL, url.PathEscape(p.pageID), query.Encode())
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return &publisher.PublishError{Err: fmt.Errorf("build facebook probe request: %w", err), Retryable: true}
+	}
+
+	response, err := p.httpClient.Do(request)
+	if err != nil {
+		return &publisher.PublishError{Err: fmt.Errorf("facebook probe request failed: %w", err), Retryable: true}
+	}
+	defer response.Body.Close()
+
+	bodyBytes, _ := io.ReadAll(io.LimitReader(response.Body, 16*1024))
+	bodyText := strings.TrimSpace(string(bodyBytes))
+
+	if response.StatusCode >= 200 && response.StatusCode < 300 {
+		return nil
+	}
+
+	retryable := response.StatusCode == http.StatusTooManyRequests || response.StatusCode >= 500
+	errMessage := fmt.Sprintf("facebook probe failed (%d)", response.StatusCode)
+	if parsed := parseErrorMessage(bodyBytes); parsed != "" {
+		errMessage += ": " + parsed
+	} else if bodyText != "" {
+		errMessage += ": " + bodyText
+	}
+	return &publisher.PublishError{Err: errors.New(errMessage), Retryable: retryable}
+}
+
 func (p *Publisher) Publish(ctx context.Context, post model.Post) (publisher.PublishResult, error) {
 	if !p.Configured() {
 		return publisher.PublishResult{}, &publisher.PublishError{Err: fmt.Errorf("facebook page publisher is not configured"), Retryable: false}

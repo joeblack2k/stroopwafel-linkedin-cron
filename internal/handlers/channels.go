@@ -1,8 +1,10 @@
 package handlers
 
 import (
+	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"strings"
@@ -10,6 +12,8 @@ import (
 
 	"linkedin-cron/internal/config"
 	"linkedin-cron/internal/db"
+	"linkedin-cron/internal/facebook"
+	"linkedin-cron/internal/linkedin"
 	"linkedin-cron/internal/model"
 )
 
@@ -43,8 +47,19 @@ type ChannelView struct {
 	FacebookAPIBaseURL   string
 }
 
+type ChannelStats struct {
+	Total    int
+	Active   int
+	Error    int
+	Disabled int
+	LinkedIn int
+	Facebook int
+	DryRun   int
+}
+
 type ChannelsPageData struct {
 	Title    string
+	Stats    ChannelStats
 	Channels []ChannelView
 	Form     ChannelFormInput
 	Message  string
@@ -134,7 +149,7 @@ func (a *App) TestChannel(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tested, err := a.Store.TestChannel(r.Context(), id)
+	tested, err := a.runChannelTest(r.Context(), id)
 	if err != nil {
 		if errors.Is(err, db.ErrNotFound) {
 			http.NotFound(w, r)
@@ -146,6 +161,55 @@ func (a *App) TestChannel(w http.ResponseWriter, r *http.Request) {
 
 	msg := fmt.Sprintf("Channel %q test status: %s", tested.DisplayName, tested.Status)
 	http.Redirect(w, r, "/settings/channels?msg="+url.QueryEscape(msg), http.StatusSeeOther)
+}
+
+func (a *App) runChannelTest(ctx context.Context, id int64) (model.Channel, error) {
+	tested, err := a.Store.TestChannel(ctx, id)
+	if err != nil {
+		return model.Channel{}, err
+	}
+	if tested.Status != model.ChannelStatusActive {
+		return tested, nil
+	}
+
+	probeErr := probeChannel(ctx, tested, a.Logger)
+	if probeErr != nil {
+		message := probeErr.Error()
+		return a.Store.SetChannelTestResult(ctx, tested.ID, model.ChannelStatusError, &message)
+	}
+
+	return a.Store.SetChannelTestResult(ctx, tested.ID, model.ChannelStatusActive, nil)
+}
+
+func probeChannel(ctx context.Context, channel model.Channel, logger *slog.Logger) error {
+	switch channel.Type {
+	case model.ChannelTypeDryRun:
+		return nil
+	case model.ChannelTypeLinkedIn:
+		baseURL := strings.TrimSpace(derefString(channel.LinkedInAPIBaseURL))
+		if baseURL == "" {
+			baseURL = "https://api.linkedin.com"
+		}
+		return linkedin.NewPublisher(
+			baseURL,
+			derefString(channel.LinkedInAccessToken),
+			derefString(channel.LinkedInAuthorURN),
+			logger,
+		).Probe(ctx)
+	case model.ChannelTypeFacebook:
+		baseURL := strings.TrimSpace(derefString(channel.FacebookAPIBaseURL))
+		if baseURL == "" {
+			baseURL = "https://graph.facebook.com/v22.0"
+		}
+		return facebook.NewPublisher(
+			baseURL,
+			derefString(channel.FacebookPageAccessToken),
+			derefString(channel.FacebookPageID),
+			logger,
+		).Probe(ctx)
+	default:
+		return fmt.Errorf("unsupported channel type: %s", channel.Type)
+	}
 }
 
 func (a *App) renderChannelsPage(w http.ResponseWriter, r *http.Request, status int, form ChannelFormInput, message, renderErr string) {
@@ -162,6 +226,7 @@ func (a *App) renderChannelsPage(w http.ResponseWriter, r *http.Request, status 
 
 	data := ChannelsPageData{
 		Title:    "Channels",
+		Stats:    buildChannelStats(channels),
 		Channels: views,
 		Form:     form,
 		Message:  message,
@@ -232,7 +297,7 @@ func (a *App) APITestChannel(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tested, err := a.Store.TestChannel(r.Context(), id)
+	tested, err := a.runChannelTest(r.Context(), id)
 	if err != nil {
 		if errors.Is(err, db.ErrNotFound) {
 			writeAPIError(w, http.StatusNotFound, "channel not found")
@@ -333,6 +398,30 @@ func toChannelView(channel model.Channel) ChannelView {
 		view.LastError = *channel.LastError
 	}
 	return view
+}
+
+func buildChannelStats(channels []model.Channel) ChannelStats {
+	stats := ChannelStats{Total: len(channels)}
+	for _, channel := range channels {
+		switch channel.Status {
+		case model.ChannelStatusActive:
+			stats.Active++
+		case model.ChannelStatusError:
+			stats.Error++
+		case model.ChannelStatusDisabled:
+			stats.Disabled++
+		}
+
+		switch channel.Type {
+		case model.ChannelTypeLinkedIn:
+			stats.LinkedIn++
+		case model.ChannelTypeFacebook:
+			stats.Facebook++
+		case model.ChannelTypeDryRun:
+			stats.DryRun++
+		}
+	}
+	return stats
 }
 
 func optionalString(value string) *string {
