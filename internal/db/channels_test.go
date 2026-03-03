@@ -3,6 +3,7 @@ package db
 import (
 	"context"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"linkedin-cron/internal/model"
@@ -121,6 +122,8 @@ func TestUpdateChannelSecretActions(t *testing.T) {
 		LinkedInAPIBaseURL:        ptrString(""),
 		FacebookAPIBaseURL:        ptrString(""),
 		FacebookPageID:            ptrString(""),
+		AuditActor:                "unit-test",
+		AuditSource:               "test",
 	})
 	if err != nil {
 		t.Fatalf("update keep action: %v", err)
@@ -136,6 +139,8 @@ func TestUpdateChannelSecretActions(t *testing.T) {
 		LinkedInAccessTokenAction: SecretActionReplace,
 		LinkedInAccessToken:       ptrString("token-new"),
 		FacebookPageTokenAction:   SecretActionKeep,
+		AuditActor:                "unit-test",
+		AuditSource:               "test",
 	})
 	if err != nil {
 		t.Fatalf("update replace action: %v", err)
@@ -147,6 +152,8 @@ func TestUpdateChannelSecretActions(t *testing.T) {
 	updated, err = store.UpdateChannel(context.Background(), channel.ID, ChannelUpdateInput{
 		LinkedInAccessTokenAction: SecretActionClear,
 		FacebookPageTokenAction:   SecretActionKeep,
+		AuditActor:                "unit-test",
+		AuditSource:               "test",
 	})
 	if err != nil {
 		t.Fatalf("update clear action: %v", err)
@@ -167,5 +174,30 @@ func TestUpdateChannelSecretActions(t *testing.T) {
 	})
 	if err == nil {
 		t.Fatal("expected error when replacing token without a value")
+	}
+
+	auditCount, err := store.CountChannelAuditEvents(context.Background(), channel.ID)
+	if err != nil {
+		t.Fatalf("count channel audit events: %v", err)
+	}
+	if auditCount != 3 {
+		t.Fatalf("expected 3 channel audit events, got %d", auditCount)
+	}
+
+	events, err := store.ListChannelAuditEvents(context.Background(), channel.ID, 10, 0)
+	if err != nil {
+		t.Fatalf("list channel audit events: %v", err)
+	}
+	if len(events) != 3 {
+		t.Fatalf("expected 3 channel audit events, got %d", len(events))
+	}
+	if events[0].EventType != "channel.updated" {
+		t.Fatalf("expected event_type=channel.updated, got %q", events[0].EventType)
+	}
+	if strings.TrimSpace(events[0].Actor) == "" {
+		t.Fatalf("expected non-empty actor")
+	}
+	if events[0].Metadata == nil || strings.TrimSpace(*events[0].Metadata) == "" {
+		t.Fatalf("expected non-empty metadata")
 	}
 }

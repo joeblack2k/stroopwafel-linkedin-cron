@@ -164,6 +164,7 @@ func registerProtectedRoutes(mux *http.ServeMux, uiAuth func(http.Handler) http.
 	mux.Handle("GET /api/v1/channels", apiAuth(http.HandlerFunc(app.APIListChannels)))
 	mux.Handle("POST /api/v1/channels", apiAuth(http.HandlerFunc(app.APICreateChannel)))
 	mux.Handle("PUT /api/v1/channels/{id}", apiAuth(http.HandlerFunc(app.APIUpdateChannel)))
+	mux.Handle("GET /api/v1/channels/{id}/audit", apiAuth(http.HandlerFunc(app.APIListChannelAuditEvents)))
 	mux.Handle("DELETE /api/v1/channels/{id}", apiAuth(http.HandlerFunc(app.APIDeleteChannel)))
 	mux.Handle("POST /api/v1/channels/{id}/test", apiAuth(http.HandlerFunc(app.APITestChannel)))
 	mux.Handle("POST /api/v1/channels/{id}/disable", apiAuth(http.HandlerFunc(app.APIDisableChannel)))

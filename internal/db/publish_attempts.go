@@ -199,12 +199,15 @@ func scanPublishAttempt(s scanner) (model.PublishAttempt, error) {
 	return attempt, nil
 }
 
-func (s *Store) ListPublishAttemptsForPost(ctx context.Context, postID int64, channelID *int64, status string, limit int) ([]model.PublishAttempt, error) {
+func (s *Store) ListPublishAttemptsForPost(ctx context.Context, postID int64, channelID *int64, status string, limit, offset int) ([]model.PublishAttempt, error) {
 	if limit <= 0 {
 		limit = 200
 	}
 	if limit > 500 {
 		limit = 500
+	}
+	if offset < 0 {
+		offset = 0
 	}
 
 	query := `SELECT id, post_id, channel_id, attempt_no, attempted_at, status, error, retry_at, external_id
@@ -222,8 +225,8 @@ func (s *Store) ListPublishAttemptsForPost(ctx context.Context, postID int64, ch
 		args = append(args, trimmedStatus)
 	}
 
-	query += ` ORDER BY attempted_at DESC, id DESC LIMIT ?`
-	args = append(args, limit)
+	query += ` ORDER BY attempted_at DESC, id DESC LIMIT ? OFFSET ?`
+	args = append(args, limit, offset)
 
 	rows, err := s.db.QueryContext(ctx, query, args...)
 	if err != nil {
@@ -244,4 +247,28 @@ func (s *Store) ListPublishAttemptsForPost(ctx context.Context, postID int64, ch
 	}
 
 	return attempts, nil
+}
+
+func (s *Store) CountPublishAttemptsForPost(ctx context.Context, postID int64, channelID *int64, status string) (int, error) {
+	query := `SELECT COUNT(1)
+	 FROM publish_attempts
+	 WHERE post_id = ?`
+	args := []any{postID}
+
+	if channelID != nil && *channelID > 0 {
+		query += ` AND channel_id = ?`
+		args = append(args, *channelID)
+	}
+	trimmedStatus := strings.TrimSpace(status)
+	if trimmedStatus != "" {
+		query += ` AND status = ?`
+		args = append(args, trimmedStatus)
+	}
+
+	var count int
+	if err := s.db.QueryRowContext(ctx, query, args...).Scan(&count); err != nil {
+		return 0, fmt.Errorf("count publish attempts for post %d: %w", postID, err)
+	}
+
+	return count, nil
 }

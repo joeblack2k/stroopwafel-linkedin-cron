@@ -2,6 +2,7 @@ package db
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -31,6 +32,9 @@ type ChannelUpdateInput struct {
 
 	FacebookPageTokenAction SecretAction
 	FacebookPageToken       *string
+
+	AuditActor  string
+	AuditSource string
 }
 
 func ParseSecretAction(value string) (SecretAction, error) {
@@ -60,11 +64,11 @@ func (s *Store) UpdateChannel(ctx context.Context, id int64, input ChannelUpdate
 		return model.Channel{}, fmt.Errorf("display_name is required")
 	}
 
-	linkedInToken, err := applySecretAction(existing.LinkedInAccessToken, input.LinkedInAccessTokenAction, input.LinkedInAccessToken, "linkedin_access_token")
+	linkedInToken, linkedInAction, err := applySecretAction(existing.LinkedInAccessToken, input.LinkedInAccessTokenAction, input.LinkedInAccessToken, "linkedin_access_token")
 	if err != nil {
 		return model.Channel{}, err
 	}
-	facebookToken, err := applySecretAction(existing.FacebookPageAccessToken, input.FacebookPageTokenAction, input.FacebookPageToken, "facebook_page_access_token")
+	facebookToken, facebookAction, err := applySecretAction(existing.FacebookPageAccessToken, input.FacebookPageTokenAction, input.FacebookPageToken, "facebook_page_access_token")
 	if err != nil {
 		return model.Channel{}, err
 	}
@@ -86,9 +90,43 @@ func (s *Store) UpdateChannel(ctx context.Context, id int64, input ChannelUpdate
 	}
 	status, validationErr := validateChannelConfig(candidate)
 	lastError := nullableValidationError(validationErr)
+	newLastError := validationErrorPointer(validationErr)
+
+	changedFields := collectChangedChannelFields(
+		existing,
+		displayName,
+		status,
+		linkedInAuthorURN,
+		linkedInAPIBaseURL,
+		facebookPageID,
+		facebookAPIBaseURL,
+		newLastError,
+		linkedInAction,
+		facebookAction,
+	)
+	summary := buildChannelAuditSummary(changedFields, linkedInAction, facebookAction)
+
+	metadataPayload := map[string]any{
+		"source":           normalizeAuditSource(input.AuditSource),
+		"changed_fields":   changedFields,
+		"status_before":    existing.Status,
+		"status_after":     status,
+		"secret_actions":   map[string]string{"linkedin_access_token": string(linkedInAction), "facebook_page_access_token": string(facebookAction)},
+		"validation_error": validationErrorString(validationErr),
+	}
+	metadataBytes, err := json.Marshal(metadataPayload)
+	if err != nil {
+		return model.Channel{}, fmt.Errorf("marshal channel audit metadata: %w", err)
+	}
+	metadataValue := string(metadataBytes)
 
 	now := time.Now().UTC()
-	result, err := s.db.ExecContext(
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return model.Channel{}, fmt.Errorf("begin update channel tx: %w", err)
+	}
+
+	result, err := tx.ExecContext(
 		ctx,
 		`UPDATE channels
 		 SET display_name = ?,
@@ -115,41 +153,64 @@ func (s *Store) UpdateChannel(ctx context.Context, id int64, input ChannelUpdate
 		id,
 	)
 	if err != nil {
+		_ = tx.Rollback()
 		return model.Channel{}, fmt.Errorf("update channel %d: %w", id, err)
 	}
+
 	affected, err := result.RowsAffected()
 	if err != nil {
+		_ = tx.Rollback()
 		return model.Channel{}, fmt.Errorf("read rows affected for update channel %d: %w", id, err)
 	}
 	if affected == 0 {
+		_ = tx.Rollback()
 		return model.Channel{}, ErrNotFound
+	}
+
+	if _, err := tx.ExecContext(
+		ctx,
+		`INSERT INTO channel_audit_events(channel_id, event_type, actor, summary, metadata, created_at)
+		 VALUES(?, ?, ?, ?, ?, ?)`,
+		id,
+		"channel.updated",
+		normalizeAuditActor(input.AuditActor),
+		summary,
+		metadataValue,
+		formatDBTime(now),
+	); err != nil {
+		_ = tx.Rollback()
+		return model.Channel{}, fmt.Errorf("record channel audit event: %w", err)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return model.Channel{}, fmt.Errorf("commit update channel tx: %w", err)
 	}
 
 	return s.GetChannel(ctx, id)
 }
 
-func applySecretAction(current *string, action SecretAction, replacement *string, fieldName string) (*string, error) {
+func applySecretAction(current *string, action SecretAction, replacement *string, fieldName string) (*string, SecretAction, error) {
 	normalizedAction, err := ParseSecretAction(string(action))
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 
 	switch normalizedAction {
 	case SecretActionKeep:
-		return copyNullableString(current), nil
+		return copyNullableString(current), normalizedAction, nil
 	case SecretActionClear:
-		return nil, nil
+		return nil, normalizedAction, nil
 	case SecretActionReplace:
 		if replacement == nil {
-			return nil, fmt.Errorf("%s is required when action=replace", fieldName)
+			return nil, "", fmt.Errorf("%s is required when action=replace", fieldName)
 		}
 		trimmed := strings.TrimSpace(*replacement)
 		if trimmed == "" {
-			return nil, fmt.Errorf("%s is required when action=replace", fieldName)
+			return nil, "", fmt.Errorf("%s is required when action=replace", fieldName)
 		}
-		return &trimmed, nil
+		return &trimmed, normalizedAction, nil
 	default:
-		return nil, fmt.Errorf("invalid secret action: %s", action)
+		return nil, "", fmt.Errorf("invalid secret action: %s", action)
 	}
 }
 
@@ -162,6 +223,113 @@ func applyNullableStringPatch(current *string, incoming *string) *string {
 		return nil
 	}
 	return &trimmed
+}
+
+func collectChangedChannelFields(
+	existing model.Channel,
+	displayName string,
+	status string,
+	linkedInAuthorURN *string,
+	linkedInAPIBaseURL *string,
+	facebookPageID *string,
+	facebookAPIBaseURL *string,
+	lastError *string,
+	linkedInAction SecretAction,
+	facebookAction SecretAction,
+) []string {
+	changed := make([]string, 0, 10)
+	if existing.DisplayName != displayName {
+		changed = append(changed, "display_name")
+	}
+	if existing.Status != status {
+		changed = append(changed, "status")
+	}
+	if nullableStringsDiffer(existing.LinkedInAuthorURN, linkedInAuthorURN) {
+		changed = append(changed, "linkedin_author_urn")
+	}
+	if nullableStringsDiffer(existing.LinkedInAPIBaseURL, linkedInAPIBaseURL) {
+		changed = append(changed, "linkedin_api_base_url")
+	}
+	if nullableStringsDiffer(existing.FacebookPageID, facebookPageID) {
+		changed = append(changed, "facebook_page_id")
+	}
+	if nullableStringsDiffer(existing.FacebookAPIBaseURL, facebookAPIBaseURL) {
+		changed = append(changed, "facebook_api_base_url")
+	}
+	if nullableStringsDiffer(existing.LastError, lastError) {
+		changed = append(changed, "last_error")
+	}
+	if linkedInAction != SecretActionKeep {
+		changed = append(changed, "linkedin_access_token")
+	}
+	if facebookAction != SecretActionKeep {
+		changed = append(changed, "facebook_page_access_token")
+	}
+	return changed
+}
+
+func buildChannelAuditSummary(changedFields []string, linkedInAction, facebookAction SecretAction) string {
+	segments := make([]string, 0, 2)
+	if len(changedFields) > 0 {
+		segments = append(segments, "updated "+strings.Join(changedFields, ", "))
+	}
+
+	secretActions := make([]string, 0, 2)
+	if linkedInAction != SecretActionKeep {
+		secretActions = append(secretActions, "linkedin_access_token="+string(linkedInAction))
+	}
+	if facebookAction != SecretActionKeep {
+		secretActions = append(secretActions, "facebook_page_access_token="+string(facebookAction))
+	}
+	if len(secretActions) > 0 {
+		segments = append(segments, "secrets "+strings.Join(secretActions, ", "))
+	}
+
+	if len(segments) == 0 {
+		return "channel update with no persisted changes"
+	}
+	return strings.Join(segments, "; ")
+}
+
+func normalizeAuditActor(actor string) string {
+	trimmed := strings.TrimSpace(actor)
+	if trimmed == "" {
+		return "unknown"
+	}
+	return trimmed
+}
+
+func normalizeAuditSource(source string) string {
+	trimmed := strings.ToLower(strings.TrimSpace(source))
+	if trimmed == "" {
+		return "unknown"
+	}
+	return trimmed
+}
+
+func validationErrorString(err error) string {
+	if err == nil {
+		return ""
+	}
+	return err.Error()
+}
+
+func validationErrorPointer(err error) *string {
+	if err == nil {
+		return nil
+	}
+	value := err.Error()
+	return &value
+}
+
+func nullableStringsDiffer(left, right *string) bool {
+	if left == nil && right == nil {
+		return false
+	}
+	if left == nil || right == nil {
+		return true
+	}
+	return *left != *right
 }
 
 func copyNullableString(value *string) *string {

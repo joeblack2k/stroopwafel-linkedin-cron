@@ -116,12 +116,37 @@ curl -X POST http://localhost:8080/api/v1/posts/bulk/channels \
 
 ## Delivery history
 
-Per-post channel attempt history:
+Per-post channel attempt history (paginated):
 
 ```bash
 curl -H "X-API-Key: lcak_xxx" \
-  "http://localhost:8080/api/v1/posts/1/attempts?status=retry&limit=50"
+  "http://localhost:8080/api/v1/posts/1/attempts?status=retry&limit=50&offset=0"
 ```
+
+Response shape:
+
+- `items`: list of attempts
+- `pagination`: `{limit, offset, total, has_next, has_prev}`
+
+## Channel audit trail
+
+Every successful channel update writes an audit event.
+
+List channel audit events:
+
+```bash
+curl -H "X-API-Key: lcak_xxx" \
+  "http://localhost:8080/api/v1/channels/1/audit?limit=25&offset=0"
+```
+
+Audit response also returns `{items, pagination}`.
+
+Each event includes:
+
+- `event_type` (for now: `channel.updated`)
+- `actor` (basic auth user or API key identifier)
+- `summary`
+- `metadata` JSON string with changed fields and secret actions
 
 ## Security recommendations for agents
 

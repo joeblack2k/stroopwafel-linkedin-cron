@@ -25,6 +25,11 @@ type attemptResponse struct {
 	ExternalID  *string `json:"external_id,omitempty"`
 }
 
+type attemptsListResponse struct {
+	Items      []attemptResponse  `json:"items"`
+	Pagination paginationResponse `json:"pagination"`
+}
+
 type bulkSendNowPayload struct {
 	PostIDs []int64 `json:"post_ids"`
 }
@@ -68,7 +73,16 @@ func (a *App) APIListPostAttempts(w http.ResponseWriter, r *http.Request) {
 		channelFilter = &parsed
 	}
 
-	attempts, err := a.Store.ListPublishAttemptsForPost(r.Context(), id, channelFilter, statusFilter, parseLimit(r.URL.Query().Get("limit"), 200))
+	limit := parseLimit(r.URL.Query().Get("limit"), 200)
+	offset := parseOffset(r.URL.Query().Get("offset"), 0)
+
+	total, err := a.Store.CountPublishAttemptsForPost(r.Context(), id, channelFilter, statusFilter)
+	if err != nil {
+		writeAPIError(w, http.StatusInternalServerError, "failed to count post attempts")
+		return
+	}
+
+	attempts, err := a.Store.ListPublishAttemptsForPost(r.Context(), id, channelFilter, statusFilter, limit, offset)
 	if err != nil {
 		writeAPIError(w, http.StatusInternalServerError, "failed to list post attempts")
 		return
@@ -109,7 +123,10 @@ func (a *App) APIListPostAttempts(w http.ResponseWriter, r *http.Request) {
 		response = append(response, item)
 	}
 
-	writeJSON(w, http.StatusOK, response)
+	writeJSON(w, http.StatusOK, attemptsListResponse{
+		Items:      response,
+		Pagination: buildPagination(limit, offset, total),
+	})
 }
 
 func (a *App) APIBulkSendNowPosts(w http.ResponseWriter, r *http.Request) {

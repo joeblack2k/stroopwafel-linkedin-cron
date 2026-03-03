@@ -34,6 +34,14 @@ type PostHistoryPageData struct {
 	Message           string
 	Error             string
 	ReturnTo          string
+
+	Page          int
+	PageSize      int
+	TotalAttempts int
+	HasPrevPage   bool
+	HasNextPage   bool
+	PrevPageURL   string
+	NextPageURL   string
 }
 
 type BulkPostsPageData struct {
@@ -80,7 +88,20 @@ func (a *App) PostHistory(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	attempts, err := a.Store.ListPublishAttemptsForPost(r.Context(), id, channelFilter, selectedStatus, 300)
+	pageSize := parseLimit(r.URL.Query().Get("page_size"), 50)
+	if pageSize > 200 {
+		pageSize = 200
+	}
+	page := parsePage(r.URL.Query().Get("page"), 1)
+	offset := (page - 1) * pageSize
+
+	totalAttempts, err := a.Store.CountPublishAttemptsForPost(r.Context(), id, channelFilter, selectedStatus)
+	if err != nil {
+		http.Error(w, "failed to count attempts", http.StatusInternalServerError)
+		return
+	}
+
+	attempts, err := a.Store.ListPublishAttemptsForPost(r.Context(), id, channelFilter, selectedStatus, pageSize, offset)
 	if err != nil {
 		http.Error(w, "failed to load attempts", http.StatusInternalServerError)
 		return
@@ -118,6 +139,14 @@ func (a *App) PostHistory(w http.ResponseWriter, r *http.Request) {
 		returnTo = "/calendar"
 	}
 
+	hasPrevPage := page > 1
+	hasNextPage := offset+len(attempts) < totalAttempts
+	prevPage := page - 1
+	if prevPage < 1 {
+		prevPage = 1
+	}
+	nextPage := page + 1
+
 	data := PostHistoryPageData{
 		Title:             "Post History",
 		Post:              post,
@@ -128,7 +157,19 @@ func (a *App) PostHistory(w http.ResponseWriter, r *http.Request) {
 		Message:           strings.TrimSpace(r.URL.Query().Get("msg")),
 		Error:             strings.TrimSpace(r.URL.Query().Get("err")),
 		ReturnTo:          returnTo,
+		Page:              page,
+		PageSize:          pageSize,
+		TotalAttempts:     totalAttempts,
+		HasPrevPage:       hasPrevPage,
+		HasNextPage:       hasNextPage,
 	}
+	if hasPrevPage {
+		data.PrevPageURL = buildPostHistoryPageURL(id, returnTo, selectedStatus, selectedChannelID, prevPage, pageSize)
+	}
+	if hasNextPage {
+		data.NextPageURL = buildPostHistoryPageURL(id, returnTo, selectedStatus, selectedChannelID, nextPage, pageSize)
+	}
+
 	if err := a.Renderer.Render(w, "post_history.html", data); err != nil {
 		http.Error(w, "failed to render history", http.StatusInternalServerError)
 	}
@@ -256,7 +297,7 @@ func normalizeAttemptStatus(value string) string {
 	}
 }
 
-func parseLimit(value string, fallback int) int {
+func parsePage(value string, fallback int) int {
 	trimmed := strings.TrimSpace(value)
 	if trimmed == "" {
 		return fallback
@@ -265,8 +306,31 @@ func parseLimit(value string, fallback int) int {
 	if err != nil || parsed <= 0 {
 		return fallback
 	}
-	if parsed > 500 {
-		return 500
-	}
 	return parsed
+}
+
+func buildPostHistoryPageURL(postID int64, returnTo, status string, channelID int64, page, pageSize int) string {
+	values := url.Values{}
+	if returnTo != "" {
+		values.Set("return_to", returnTo)
+	}
+	if status != "" {
+		values.Set("status", status)
+	}
+	if channelID > 0 {
+		values.Set("channel_id", strconv.FormatInt(channelID, 10))
+	}
+	if page > 1 {
+		values.Set("page", strconv.Itoa(page))
+	}
+	if pageSize > 0 {
+		values.Set("page_size", strconv.Itoa(pageSize))
+	}
+
+	base := "/posts/" + strconv.FormatInt(postID, 10) + "/history"
+	query := values.Encode()
+	if query == "" {
+		return base
+	}
+	return base + "?" + query
 }

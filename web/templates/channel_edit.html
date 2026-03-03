@@ -82,6 +82,49 @@
         <a class="button" href="/settings/channels">Back</a>
       </div>
     </form>
+
+    <section class="actions">
+      <div class="section-head">
+        <h3>Audit trail</h3>
+        <p class="muted">Total events: {{.AuditTotal}}</p>
+      </div>
+      <table>
+        <thead>
+          <tr>
+            <th>When</th>
+            <th>Type</th>
+            <th>Actor</th>
+            <th>Summary</th>
+            <th>Metadata</th>
+          </tr>
+        </thead>
+        <tbody>
+          {{if .AuditEvents}}
+            {{range .AuditEvents}}
+              <tr>
+                <td>{{.CreatedAt}}</td>
+                <td>{{.EventType}}</td>
+                <td>{{.Actor}}</td>
+                <td>{{.Summary}}</td>
+                <td>{{if .Metadata}}<code>{{.Metadata}}</code>{{else}}<span class="muted">-</span>{{end}}</td>
+              </tr>
+            {{end}}
+          {{else}}
+            <tr>
+              <td colspan="5" class="muted">No audit events yet.</td>
+            </tr>
+          {{end}}
+        </tbody>
+      </table>
+      <div class="button-row">
+        {{if .AuditHasPrev}}
+          <a class="button" href="{{.AuditPrevURL}}">Previous</a>
+        {{end}}
+        {{if .AuditHasNext}}
+          <a class="button" href="{{.AuditNextURL}}">Next</a>
+        {{end}}
+      </div>
+    </section>
   </main>
 </body>
 </html>

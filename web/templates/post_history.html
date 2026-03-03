@@ -27,6 +27,7 @@
       <p><strong>Status:</strong> {{.Post.Status}} · <strong>Text:</strong> {{.Post.Text}}</p>
       <form method="get" action="/posts/{{.Post.ID}}/history" class="stack">
         <input type="hidden" name="return_to" value="{{.ReturnTo}}">
+        <input type="hidden" name="page" value="1">
         <label>
           Status filter
           <select name="status">
@@ -45,6 +46,15 @@
             {{end}}
           </select>
         </label>
+        <label>
+          Page size
+          <select name="page_size">
+            <option value="25" {{if eq .PageSize 25}}selected{{end}}>25</option>
+            <option value="50" {{if eq .PageSize 50}}selected{{end}}>50</option>
+            <option value="100" {{if eq .PageSize 100}}selected{{end}}>100</option>
+            <option value="200" {{if eq .PageSize 200}}selected{{end}}>200</option>
+          </select>
+        </label>
         <div class="button-row">
           <button type="submit">Apply filters</button>
           <a class="button" href="/posts/{{.Post.ID}}/edit?return_to={{.ReturnTo}}">Back to post</a>
@@ -53,7 +63,10 @@
     </section>
 
     <section class="actions">
-      <h3>Attempts</h3>
+      <div class="section-head">
+        <h3>Attempts</h3>
+        <p class="muted">Total: {{.TotalAttempts}} · Page {{.Page}}</p>
+      </div>
       <table>
         <thead>
           <tr>
@@ -86,6 +99,15 @@
           {{end}}
         </tbody>
       </table>
+
+      <div class="button-row">
+        {{if .HasPrevPage}}
+          <a class="button" href="{{.PrevPageURL}}">Previous page</a>
+        {{end}}
+        {{if .HasNextPage}}
+          <a class="button" href="{{.NextPageURL}}">Next page</a>
+        {{end}}
+      </div>
     </section>
   </main>
 </body>

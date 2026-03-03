@@ -57,6 +57,14 @@ type SettingsStatus struct {
 	MigrationStatus     string `json:"migration_status"`
 }
 
+type paginationResponse struct {
+	Limit   int  `json:"limit"`
+	Offset  int  `json:"offset"`
+	Total   int  `json:"total"`
+	HasNext bool `json:"has_next"`
+	HasPrev bool `json:"has_prev"`
+}
+
 func BasicAuthMiddleware(username, password string, logger *slog.Logger) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -212,6 +220,53 @@ func parseID(pathValue string) (int64, error) {
 		return 0, fmt.Errorf("invalid id")
 	}
 	return id, nil
+}
+
+func parseLimit(value string, fallback int) int {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return fallback
+	}
+	parsed, err := strconv.Atoi(trimmed)
+	if err != nil || parsed <= 0 {
+		return fallback
+	}
+	if parsed > 500 {
+		return 500
+	}
+	return parsed
+}
+
+func parseOffset(value string, fallback int) int {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return fallback
+	}
+	parsed, err := strconv.Atoi(trimmed)
+	if err != nil || parsed < 0 {
+		return fallback
+	}
+	return parsed
+}
+
+func buildPagination(limit, offset, total int) paginationResponse {
+	if limit <= 0 {
+		limit = 1
+	}
+	if offset < 0 {
+		offset = 0
+	}
+	if total < 0 {
+		total = 0
+	}
+
+	return paginationResponse{
+		Limit:   limit,
+		Offset:  offset,
+		Total:   total,
+		HasNext: offset+limit < total,
+		HasPrev: offset > 0,
+	}
 }
 
 func parseDateTimeLocal(value string, location *time.Location) (*time.Time, error) {

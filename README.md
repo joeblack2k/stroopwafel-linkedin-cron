@@ -20,6 +20,7 @@ A lightweight Go monolith to draft, schedule, and publish social posts (LinkedIn
 - `internal/facebook`: Facebook Page Graph API publisher (config-gated)
 - `channels` and `post_channels` DB model to manage publish channels via GUI/API
 - `publish_attempts` table for per-channel delivery history and retry state
+- `channel_audit_events` table for channel credential/update audit trail
 
 ## Agent Docs
 
@@ -142,6 +143,7 @@ Security behavior:
 - `GET /api/v1/channels`
 - `POST /api/v1/channels`
 - `PUT /api/v1/channels/{id}`
+- `GET /api/v1/channels/{id}/audit`
 - `DELETE /api/v1/channels/{id}`
 - `POST /api/v1/channels/{id}/test`
 - `POST /api/v1/channels/{id}/disable`
@@ -154,6 +156,8 @@ Notes:
 - API errors use `{ "error": "..." }`
 - posts support `channel_ids` for assignment
 - scheduled posts require at least one channel
+- `GET /api/v1/posts/{id}/attempts` is paginated (`limit`, `offset`) and returns `{items, pagination}`
+- `GET /api/v1/channels/{id}/audit` is paginated (`limit`, `offset`) and returns `{items, pagination}`
 
 ## Scheduler & Retry Behavior
 

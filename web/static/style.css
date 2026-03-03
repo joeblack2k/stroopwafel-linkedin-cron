@@ -194,6 +194,17 @@ table {
   margin-top: 1rem;
 }
 
+.section-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.section-head h3 {
+  margin: 0;
+}
+
 code {
   word-break: break-all;
 }
