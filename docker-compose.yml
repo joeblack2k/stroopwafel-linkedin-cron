@@ -23,7 +23,7 @@ services:
       - .env
     environment:
       APP_DB_PATH: /data/linkedin-cron.db
-    command: ["/bin/sh", "-c", "while true; do /usr/local/bin/linkedin-cron-scheduler; sleep 60; done"]
+    entrypoint: ["/bin/sh", "-c", "while true; do /usr/local/bin/linkedin-cron-scheduler; sleep 60; done"]
     depends_on:
       - linkedin-cron-server
     volumes:

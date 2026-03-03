@@ -278,6 +278,11 @@ cp .env.example .env
 docker compose up -d
 ```
 
+Compose behavior:
+
+- `linkedin-cron-server` runs the HTTP app.
+- `linkedin-cron-scheduler` overrides image entrypoint and runs the scheduler every minute in a lightweight shell loop.
+
 Or via Makefile:
 
 ```bash
