@@ -202,6 +202,80 @@ func TestAPIListChannelAuditEvents(t *testing.T) {
 	}
 }
 
+func TestAPIListChannelsIncludesSecretPreviewMetadata(t *testing.T) {
+	t.Parallel()
+
+	app := newAPIApp(t)
+	_, err := app.Store.CreateChannel(context.Background(), db.ChannelInput{
+		Type:                    model.ChannelTypeLinkedIn,
+		DisplayName:             "LinkedIn Main",
+		LinkedInAccessToken:     ptrString("token-123456"),
+		LinkedInAuthorURN:       ptrString("urn:li:organization:123456"),
+		LinkedInAPIBaseURL:      ptrString("https://api.linkedin.com"),
+		FacebookPageAccessToken: ptrString("fb-token-abcdef"),
+		FacebookPageID:          ptrString("123456789"),
+		FacebookAPIBaseURL:      ptrString("https://graph.facebook.com/v22.0"),
+	})
+	if err != nil {
+		t.Fatalf("create channel: %v", err)
+	}
+
+	request := httptest.NewRequest(http.MethodGet, "/api/v1/channels", nil)
+	recorder := httptest.NewRecorder()
+	app.APIListChannels(recorder, request)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d (%s)", recorder.Code, recorder.Body.String())
+	}
+
+	var payload []map[string]any
+	if err := json.Unmarshal(recorder.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("decode channels response: %v", err)
+	}
+	if len(payload) != 1 {
+		t.Fatalf("expected 1 channel in response, got %d", len(payload))
+	}
+	item := payload[0]
+
+	if _, exists := item["linkedin_access_token"]; exists {
+		t.Fatalf("raw linkedin_access_token must not be present in API response")
+	}
+	if _, exists := item["facebook_page_access_token"]; exists {
+		t.Fatalf("raw facebook_page_access_token must not be present in API response")
+	}
+
+	secretPreview, ok := item["secret_preview"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected secret_preview object in response, got %#v", item["secret_preview"])
+	}
+	linkedInMasked, _ := secretPreview["linkedin_access_token_masked"].(string)
+	if linkedInMasked == "" {
+		t.Fatalf("expected linkedin_access_token_masked to be present")
+	}
+	if linkedInMasked == "token-123456" {
+		t.Fatalf("expected linkedin_access_token_masked to hide raw token")
+	}
+	facebookMasked, _ := secretPreview["facebook_page_access_token_masked"].(string)
+	if facebookMasked == "" {
+		t.Fatalf("expected facebook_page_access_token_masked to be present")
+	}
+	if facebookMasked == "fb-token-abcdef" {
+		t.Fatalf("expected facebook_page_access_token_masked to hide raw token")
+	}
+
+	secretPresence, ok := item["secret_presence"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected secret_presence object in response, got %#v", item["secret_presence"])
+	}
+	linkedInTokenPresent, _ := secretPresence["linkedin_access_token_present"].(bool)
+	if !linkedInTokenPresent {
+		t.Fatalf("expected linkedin_access_token_present=true")
+	}
+	facebookTokenPresent, _ := secretPresence["facebook_page_access_token_present"].(bool)
+	if !facebookTokenPresent {
+		t.Fatalf("expected facebook_page_access_token_present=true")
+	}
+}
+
 func performJSONHandlerRequest(t *testing.T, method, path string, payload any, handler func(http.ResponseWriter, *http.Request)) *httptest.ResponseRecorder {
 	t.Helper()
 	body, err := json.Marshal(payload)
@@ -281,6 +355,24 @@ func TestAPIUpdateChannelSecretActions(t *testing.T) {
 	configured, _ := response["linkedin_configured"].(bool)
 	if configured {
 		t.Fatalf("expected linkedin_configured=false after clear")
+	}
+
+	secretPreview, ok := response["secret_preview"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected secret_preview object in response, got %#v", response["secret_preview"])
+	}
+	maskedToken, _ := secretPreview["linkedin_access_token_masked"].(string)
+	if maskedToken != "" {
+		t.Fatalf("expected cleared linkedin_access_token_masked to be empty, got %q", maskedToken)
+	}
+
+	secretPresence, ok := response["secret_presence"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected secret_presence object in response, got %#v", response["secret_presence"])
+	}
+	linkedInTokenPresent, _ := secretPresence["linkedin_access_token_present"].(bool)
+	if linkedInTokenPresent {
+		t.Fatalf("expected linkedin_access_token_present=false after clear")
 	}
 }
 

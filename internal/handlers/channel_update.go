@@ -2,10 +2,12 @@ package handlers
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -30,12 +32,29 @@ type ChannelUpdateFormInput struct {
 	FacebookPageToken       string
 }
 
+type ChannelAuditSecretActionView struct {
+	Field  string
+	Action string
+}
+
+type ChannelAuditMetadataView struct {
+	Raw             string
+	Source          string
+	ChangedFields   []string
+	SecretActions   []ChannelAuditSecretActionView
+	StatusBefore    string
+	StatusAfter     string
+	ValidationError string
+	ParseError      string
+	HasDetails      bool
+}
+
 type ChannelAuditEventView struct {
 	CreatedAt string
 	EventType string
 	Actor     string
 	Summary   string
-	Metadata  string
+	Metadata  ChannelAuditMetadataView
 }
 
 type ChannelEditPageData struct {
@@ -392,11 +411,86 @@ func (a *App) loadChannelAuditHistory(ctx context.Context, channelID int64, limi
 			EventType: event.EventType,
 			Actor:     event.Actor,
 			Summary:   event.Summary,
-			Metadata:  strings.TrimSpace(derefString(event.Metadata)),
+			Metadata:  parseChannelAuditMetadataView(event.Metadata),
 		})
 	}
 
 	return views, total, nil
+}
+
+type channelAuditMetadataPayload struct {
+	Source          string            `json:"source"`
+	ChangedFields   []string          `json:"changed_fields"`
+	StatusBefore    string            `json:"status_before"`
+	StatusAfter     string            `json:"status_after"`
+	SecretActions   map[string]string `json:"secret_actions"`
+	ValidationError string            `json:"validation_error"`
+}
+
+func parseChannelAuditMetadataView(metadata *string) ChannelAuditMetadataView {
+	raw := strings.TrimSpace(derefString(metadata))
+	view := ChannelAuditMetadataView{Raw: raw}
+	if raw == "" {
+		return view
+	}
+
+	var payload channelAuditMetadataPayload
+	if err := json.Unmarshal([]byte(raw), &payload); err != nil {
+		view.ParseError = "metadata is not valid JSON"
+		view.HasDetails = true
+		return view
+	}
+
+	view.Source = strings.TrimSpace(payload.Source)
+	view.ChangedFields = normalizeAuditChangedFields(payload.ChangedFields)
+	view.StatusBefore = strings.TrimSpace(payload.StatusBefore)
+	view.StatusAfter = strings.TrimSpace(payload.StatusAfter)
+	view.ValidationError = strings.TrimSpace(payload.ValidationError)
+
+	secretActionKeys := make([]string, 0, len(payload.SecretActions))
+	for key := range payload.SecretActions {
+		secretActionKeys = append(secretActionKeys, key)
+	}
+	sort.Strings(secretActionKeys)
+
+	view.SecretActions = make([]ChannelAuditSecretActionView, 0, len(secretActionKeys))
+	for _, key := range secretActionKeys {
+		action := strings.TrimSpace(payload.SecretActions[key])
+		if action == "" {
+			continue
+		}
+		view.SecretActions = append(view.SecretActions, ChannelAuditSecretActionView{
+			Field:  key,
+			Action: action,
+		})
+	}
+
+	view.HasDetails = view.Source != "" || len(view.ChangedFields) > 0 || len(view.SecretActions) > 0 || view.ValidationError != "" || (view.StatusBefore != "" && view.StatusAfter != "") || view.ParseError != ""
+	if !view.HasDetails && view.Raw != "" {
+		view.HasDetails = true
+	}
+	return view
+}
+
+func normalizeAuditChangedFields(values []string) []string {
+	if len(values) == 0 {
+		return nil
+	}
+	normalized := make([]string, 0, len(values))
+	seen := make(map[string]struct{}, len(values))
+	for _, value := range values {
+		trimmed := strings.TrimSpace(value)
+		if trimmed == "" {
+			continue
+		}
+		if _, exists := seen[trimmed]; exists {
+			continue
+		}
+		seen[trimmed] = struct{}{}
+		normalized = append(normalized, trimmed)
+	}
+	sort.Strings(normalized)
+	return normalized
 }
 
 func buildChannelAuditPageURL(channelID int64, limit, offset int) string {

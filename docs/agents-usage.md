@@ -40,6 +40,11 @@ List channels:
 curl -H "X-API-Key: lcak_xxx" http://localhost:8080/api/v1/channels
 ```
 
+Channel responses include:
+
+- `secret_preview` with masked credential values
+- `secret_presence` with booleans indicating which credential fields are set
+
 Create a dry-run channel (safe default for automation tests):
 
 ```bash

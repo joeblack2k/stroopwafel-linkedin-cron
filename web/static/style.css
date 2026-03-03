@@ -134,6 +134,19 @@ button {
   margin-bottom: 0.3rem;
 }
 
+.compact-list {
+  margin: 0.3rem 0 0;
+  padding-left: 1rem;
+}
+
+.compact-list li {
+  margin: 0.15rem 0;
+}
+
+details {
+  margin-top: 0.3rem;
+}
+
 .muted {
   color: #64748b;
 }

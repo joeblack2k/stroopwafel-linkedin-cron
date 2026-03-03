@@ -77,17 +77,35 @@ type channelPayload struct {
 	FacebookAPIBaseURL      *string `json:"facebook_api_base_url,omitempty"`
 }
 
+type channelSecretPreview struct {
+	LinkedInAccessTokenMasked string `json:"linkedin_access_token_masked"`
+	LinkedInAuthorURNMasked   string `json:"linkedin_author_urn_masked"`
+	FacebookTokenMasked       string `json:"facebook_page_access_token_masked"`
+	FacebookPageIDMasked      string `json:"facebook_page_id_masked"`
+}
+
+type channelSecretPresence struct {
+	LinkedInAccessTokenPresent bool `json:"linkedin_access_token_present"`
+	LinkedInAuthorURNPresent   bool `json:"linkedin_author_urn_present"`
+	FacebookTokenPresent       bool `json:"facebook_page_access_token_present"`
+	FacebookPageIDPresent      bool `json:"facebook_page_id_present"`
+}
+
 type channelResponse struct {
-	ID                 int64   `json:"id"`
-	Type               string  `json:"type"`
-	DisplayName        string  `json:"display_name"`
-	Status             string  `json:"status"`
-	CreatedAt          string  `json:"created_at"`
-	UpdatedAt          string  `json:"updated_at"`
-	LastTestAt         *string `json:"last_test_at,omitempty"`
-	LastError          *string `json:"last_error,omitempty"`
-	LinkedInConfigured bool    `json:"linkedin_configured"`
-	FacebookConfigured bool    `json:"facebook_configured"`
+	ID                 int64                 `json:"id"`
+	Type               string                `json:"type"`
+	DisplayName        string                `json:"display_name"`
+	Status             string                `json:"status"`
+	CreatedAt          string                `json:"created_at"`
+	UpdatedAt          string                `json:"updated_at"`
+	LastTestAt         *string               `json:"last_test_at,omitempty"`
+	LastError          *string               `json:"last_error,omitempty"`
+	LinkedInConfigured bool                  `json:"linkedin_configured"`
+	FacebookConfigured bool                  `json:"facebook_configured"`
+	LinkedInAPIBaseURL string                `json:"linkedin_api_base_url,omitempty"`
+	FacebookAPIBaseURL string                `json:"facebook_api_base_url,omitempty"`
+	SecretPreview      channelSecretPreview  `json:"secret_preview"`
+	SecretPresence     channelSecretPresence `json:"secret_presence"`
 }
 
 func (a *App) Channels(w http.ResponseWriter, r *http.Request) {
@@ -358,6 +376,11 @@ func parseChannelPayload(payload channelPayload) (db.ChannelInput, error) {
 }
 
 func mapChannelResponse(channel model.Channel) channelResponse {
+	linkedInToken := strings.TrimSpace(derefString(channel.LinkedInAccessToken))
+	linkedInAuthor := strings.TrimSpace(derefString(channel.LinkedInAuthorURN))
+	facebookToken := strings.TrimSpace(derefString(channel.FacebookPageAccessToken))
+	facebookPageID := strings.TrimSpace(derefString(channel.FacebookPageID))
+
 	response := channelResponse{
 		ID:                 channel.ID,
 		Type:               string(channel.Type),
@@ -366,8 +389,22 @@ func mapChannelResponse(channel model.Channel) channelResponse {
 		CreatedAt:          channel.CreatedAt.UTC().Format(time.RFC3339),
 		UpdatedAt:          channel.UpdatedAt.UTC().Format(time.RFC3339),
 		LastError:          channel.LastError,
-		LinkedInConfigured: strings.TrimSpace(derefString(channel.LinkedInAccessToken)) != "" && strings.TrimSpace(derefString(channel.LinkedInAuthorURN)) != "",
-		FacebookConfigured: strings.TrimSpace(derefString(channel.FacebookPageAccessToken)) != "" && strings.TrimSpace(derefString(channel.FacebookPageID)) != "",
+		LinkedInConfigured: linkedInToken != "" && linkedInAuthor != "",
+		FacebookConfigured: facebookToken != "" && facebookPageID != "",
+		LinkedInAPIBaseURL: strings.TrimSpace(derefString(channel.LinkedInAPIBaseURL)),
+		FacebookAPIBaseURL: strings.TrimSpace(derefString(channel.FacebookAPIBaseURL)),
+		SecretPreview: channelSecretPreview{
+			LinkedInAccessTokenMasked: config.MaskSecret(linkedInToken),
+			LinkedInAuthorURNMasked:   config.MaskSecret(linkedInAuthor),
+			FacebookTokenMasked:       config.MaskSecret(facebookToken),
+			FacebookPageIDMasked:      config.MaskSecret(facebookPageID),
+		},
+		SecretPresence: channelSecretPresence{
+			LinkedInAccessTokenPresent: linkedInToken != "",
+			LinkedInAuthorURNPresent:   linkedInAuthor != "",
+			FacebookTokenPresent:       facebookToken != "",
+			FacebookPageIDPresent:      facebookPageID != "",
+		},
 	}
 	if channel.LastTestAt != nil {
 		value := channel.LastTestAt.UTC().Format(time.RFC3339)

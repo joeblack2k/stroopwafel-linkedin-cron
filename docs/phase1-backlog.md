@@ -72,14 +72,14 @@ Bring the product closer to Postiz by introducing channel management and post-to
    - UI: channel edit page shows audit trail with pagination
    - UI: post history view supports pagination
 
-## Next (Sprint D)
+## Sprint D (in progress)
 
-1. **Credential UX hardening**
-   - Add explicit secret field masking/preview metadata in API responses
-   - Add structured metadata viewer (parsed JSON) in channel audit UI
+1. **Credential UX hardening (phase 1 implemented)**
+   - Added explicit secret masking metadata to channel API responses (`secret_preview`, `secret_presence`)
+   - Added structured audit metadata viewer on `/settings/channels/{id}/edit` (parsed JSON + raw fallback)
 
-2. **History UX polish**
+2. **History UX polish (next)**
    - Date-range filtering for large histories
 
-3. **Bulk UX polish**
+3. **Bulk UX polish (next)**
    - Saved selections, safer confirmation UX, and partial-failure retry helpers

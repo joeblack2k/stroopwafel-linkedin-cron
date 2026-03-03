@@ -106,7 +106,29 @@
                 <td>{{.EventType}}</td>
                 <td>{{.Actor}}</td>
                 <td>{{.Summary}}</td>
-                <td>{{if .Metadata}}<code>{{.Metadata}}</code>{{else}}<span class="muted">-</span>{{end}}</td>
+                <td>
+                  {{if .Metadata.Source}}<div><strong>source:</strong> {{.Metadata.Source}}</div>{{end}}
+                  {{if .Metadata.ChangedFields}}<div><strong>changed:</strong> {{range $index, $field := .Metadata.ChangedFields}}{{if $index}}, {{end}}<code>{{$field}}</code>{{end}}</div>{{end}}
+                  {{if .Metadata.SecretActions}}
+                    <div><strong>secret actions:</strong>
+                      <ul class="compact-list">
+                        {{range .Metadata.SecretActions}}
+                          <li><code>{{.Field}}</code> → <code>{{.Action}}</code></li>
+                        {{end}}
+                      </ul>
+                    </div>
+                  {{end}}
+                  {{if and .Metadata.StatusBefore .Metadata.StatusAfter}}<div><strong>status:</strong> <code>{{.Metadata.StatusBefore}}</code> → <code>{{.Metadata.StatusAfter}}</code></div>{{end}}
+                  {{if .Metadata.ValidationError}}<div><strong>validation:</strong> {{.Metadata.ValidationError}}</div>{{end}}
+                  {{if .Metadata.ParseError}}<div class="muted">{{.Metadata.ParseError}}</div>{{end}}
+                  {{if .Metadata.Raw}}
+                    <details>
+                      <summary>raw metadata</summary>
+                      <code>{{.Metadata.Raw}}</code>
+                    </details>
+                  {{end}}
+                  {{if not .Metadata.HasDetails}}<span class="muted">-</span>{{end}}
+                </td>
               </tr>
             {{end}}
           {{else}}
