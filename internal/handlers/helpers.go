@@ -27,6 +27,7 @@ type App struct {
 	RequestedPublisher string
 	ActivePublisher    string
 	LinkedInConfigured bool
+	FacebookConfigured bool
 }
 
 type SettingsStatus struct {
@@ -38,6 +39,9 @@ type SettingsStatus struct {
 	LinkedInConfigured  bool   `json:"linkedin_configured"`
 	MaskedLinkedInToken string `json:"masked_linkedin_token"`
 	MaskedAuthorURN     string `json:"masked_author_urn"`
+	FacebookConfigured  bool   `json:"facebook_configured"`
+	MaskedFacebookToken string `json:"masked_facebook_token"`
+	MaskedFacebookPage  string `json:"masked_facebook_page_id"`
 	DBPath              string `json:"db_path"`
 	Timezone            string `json:"timezone"`
 	MigrationStatus     string `json:"migration_status"`
@@ -83,6 +87,9 @@ func (a *App) settingsStatus() SettingsStatus {
 		LinkedInConfigured:  a.LinkedInConfigured,
 		MaskedLinkedInToken: config.MaskSecret(a.Config.LinkedInToken),
 		MaskedAuthorURN:     config.MaskSecret(a.Config.LinkedInAuthorURN),
+		FacebookConfigured:  a.FacebookConfigured,
+		MaskedFacebookToken: config.MaskSecret(a.Config.FacebookPageToken),
+		MaskedFacebookPage:  config.MaskSecret(a.Config.FacebookPageID),
 		DBPath:              a.Config.DBPath,
 		Timezone:            a.Config.Timezone,
 		MigrationStatus:     a.MigrationStatus,

@@ -7,6 +7,7 @@ import (
 
 	"linkedin-cron/internal/config"
 	"linkedin-cron/internal/db"
+	"linkedin-cron/internal/facebook"
 	"linkedin-cron/internal/linkedin"
 	"linkedin-cron/internal/publisher"
 	"linkedin-cron/internal/scheduler"
@@ -58,5 +59,14 @@ func buildPublisher(cfg config.Config, logger *slog.Logger) publisher.Publisher 
 		}
 		logger.LogAttrs(context.Background(), slog.LevelWarn, "linkedin publisher not configured; falling back to dry-run")
 	}
+
+	if cfg.PublisherMode == "facebook-page" {
+		facebookPublisher := facebook.NewPublisher(cfg.FacebookAPIBase, cfg.FacebookPageToken, cfg.FacebookPageID, logger)
+		if facebookPublisher.Configured() {
+			return facebookPublisher
+		}
+		logger.LogAttrs(context.Background(), slog.LevelWarn, "facebook page publisher not configured; falling back to dry-run")
+	}
+
 	return publisher.NewDryRunPublisher(logger)
 }

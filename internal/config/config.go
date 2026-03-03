@@ -21,6 +21,9 @@ type Config struct {
 	LinkedInToken     string
 	LinkedInAuthorURN string
 	LinkedInAPIBase   string
+	FacebookPageToken string
+	FacebookPageID    string
+	FacebookAPIBase   string
 }
 
 func Load() (Config, error) {
@@ -44,6 +47,9 @@ func Load() (Config, error) {
 		LinkedInToken:     strings.TrimSpace(os.Getenv("LINKEDIN_ACCESS_TOKEN")),
 		LinkedInAuthorURN: strings.TrimSpace(os.Getenv("LINKEDIN_AUTHOR_URN")),
 		LinkedInAPIBase:   getEnv("LINKEDIN_API_BASE_URL", "https://api.linkedin.com"),
+		FacebookPageToken: strings.TrimSpace(os.Getenv("FACEBOOK_PAGE_ACCESS_TOKEN")),
+		FacebookPageID:    strings.TrimSpace(os.Getenv("FACEBOOK_PAGE_ID")),
+		FacebookAPIBase:   strings.TrimRight(getEnv("FACEBOOK_API_BASE_URL", "https://graph.facebook.com/v22.0"), "/"),
 	}
 
 	return cfg, nil
@@ -55,6 +61,10 @@ func (c Config) BasicAuthConfigured() bool {
 
 func (c Config) LinkedInConfigured() bool {
 	return c.LinkedInToken != "" && c.LinkedInAuthorURN != ""
+}
+
+func (c Config) FacebookConfigured() bool {
+	return c.FacebookPageToken != "" && c.FacebookPageID != ""
 }
 
 func MaskSecret(value string) string {
@@ -95,6 +105,9 @@ func normalizeMode(value string) string {
 	value = strings.ToLower(strings.TrimSpace(value))
 	if value == "linkedin" {
 		return "linkedin"
+	}
+	if value == "facebook" || value == "facebook-page" {
+		return "facebook-page"
 	}
 	return "dry-run"
 }

@@ -1,6 +1,6 @@
 # linkedin-cron
 
-A lightweight Go monolith to draft, schedule, and publish LinkedIn posts with:
+A lightweight Go monolith to draft, schedule, and publish social posts (LinkedIn + Facebook Pages) with:
 
 - server-rendered HTML UI (`net/http` + `html/template` + HTMX)
 - minimal authenticated JSON API for agent use
@@ -16,6 +16,7 @@ A lightweight Go monolith to draft, schedule, and publish LinkedIn posts with:
 - `internal/scheduler`: due-selection + retry bookkeeping + send-now flow
 - `internal/publisher`: publisher interface + dry-run implementation
 - `internal/linkedin`: LinkedIn HTTP publisher (config-gated)
+- `internal/facebook`: Facebook Page Graph API publisher (config-gated)
 
 There is no internal background job loop in the server and no Node build pipeline.
 
@@ -64,12 +65,15 @@ Environment variables:
 - `APP_BASIC_AUTH_PASS`
 - `APP_SESSION_SECURE`
 - `APP_TIMEZONE` (default `UTC`)
-- `PUBLISHER_MODE` (`dry-run` or `linkedin`, default `dry-run`)
+- `PUBLISHER_MODE` (`dry-run`, `linkedin`, or `facebook-page`, default `dry-run`)
 - `LINKEDIN_ACCESS_TOKEN`
 - `LINKEDIN_AUTHOR_URN`
 - `LINKEDIN_API_BASE_URL` (default `https://api.linkedin.com`)
+- `FACEBOOK_PAGE_ACCESS_TOKEN`
+- `FACEBOOK_PAGE_ID`
+- `FACEBOOK_API_BASE_URL` (default `https://graph.facebook.com/v22.0`)
 
-If `PUBLISHER_MODE=linkedin` but required LinkedIn vars are missing, the app falls back to dry-run mode.
+If `PUBLISHER_MODE=linkedin` or `PUBLISHER_MODE=facebook-page` but required credentials are missing, the app falls back to dry-run mode.
 
 ## UI Endpoints
 
@@ -123,6 +127,14 @@ Retry policy for publish failures:
 
 - LinkedIn publishing APIs may require specific product access and approvals.
 - For development/testing, `dry-run` mode logs intended publish actions and marks success in scheduler flow.
+
+## Facebook Page Publishing Notes
+
+`facebook-page` mode is optional and config-gated.
+
+- Requires a valid Facebook Page access token (`FACEBOOK_PAGE_ACCESS_TOKEN`) and page ID (`FACEBOOK_PAGE_ID`).
+- The publisher posts to `/{page-id}/feed` on the configured Graph API base URL.
+- 429/5xx responses are treated as retryable; other API errors are treated as terminal.
 
 ## Debian/Ubuntu Deployment (systemd)
 
