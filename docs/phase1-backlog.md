@@ -142,3 +142,20 @@ Bring the product closer to Postiz by introducing channel management and post-to
    - Made static assets public so `/login` is fully styled without auth
    - Added logout affordance in UI navigation
    - Expanded docs + tests for new agent/UI flows
+
+
+## Sprint H (implemented)
+
+1. **Data-first container model**
+   - Moved runtime persistence model to `/data`
+   - Added `/data/config.json` bootstrap/load support in app config
+   - Kept SQLite and all user-generated state under `/data`
+
+2. **Single-container Docker UX**
+   - Added container entrypoint wrapper running server + minute scheduler loop
+   - Simplified compose to one service with only port + `/data` bind mount
+   - Added `docker-compose.example.yml` with host path placeholder
+
+3. **Deployment consistency**
+   - Updated docs and status views to expose `data_dir` + `config_path`
+   - Maintained API/UI behavior while removing docker env sprawl

@@ -60,6 +60,8 @@ type SettingsStatus struct {
 	FacebookConfigured  bool   `json:"facebook_configured"`
 	MaskedFacebookToken string `json:"masked_facebook_token"`
 	MaskedFacebookPage  string `json:"masked_facebook_page_id"`
+	DataDir             string `json:"data_dir"`
+	ConfigPath          string `json:"config_path"`
 	DBPath              string `json:"db_path"`
 	Timezone            string `json:"timezone"`
 	MigrationStatus     string `json:"migration_status"`
@@ -232,6 +234,8 @@ func (a *App) settingsStatus() SettingsStatus {
 		FacebookConfigured:  a.FacebookConfigured,
 		MaskedFacebookToken: config.MaskSecret(a.Config.FacebookPageToken),
 		MaskedFacebookPage:  config.MaskSecret(a.Config.FacebookPageID),
+		DataDir:             a.Config.DataDir,
+		ConfigPath:          a.Config.ConfigPath,
 		DBPath:              a.Config.DBPath,
 		Timezone:            a.Config.Timezone,
 		MigrationStatus:     a.MigrationStatus,

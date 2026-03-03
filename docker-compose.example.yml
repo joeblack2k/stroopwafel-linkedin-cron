@@ -6,4 +6,4 @@ services:
     ports:
       - "8080:8080"
     volumes:
-      - /opt/stacks/tools/stroopwafel:/data
+      - /absolute/path/to/your/stroopwafel-data:/data

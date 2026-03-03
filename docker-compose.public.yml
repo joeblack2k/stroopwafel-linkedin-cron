@@ -1,50 +1,10 @@
 services:
-  linkedin-cron-server:
+  stroopwafel:
     image: ghcr.io/joeblack2k/stroopwafel-linkedin-cron:${IMAGE_TAG:-latest}
-    container_name: linkedin-cron-server
+    container_name: stroopwafel
     restart: unless-stopped
     pull_policy: always
-    environment:
-      APP_ADDR: ${APP_ADDR:-:8080}
-      APP_BASE_URL: ${APP_BASE_URL:-https://social.example.com}
-      APP_DB_PATH: /data/linkedin-cron.db
-      APP_BASIC_AUTH_USER: admin
-      APP_BASIC_AUTH_PASS: admin
-      APP_STATIC_API_KEYS: bot:bot-change-me
-      APP_SESSION_SECURE: ${APP_SESSION_SECURE:-true}
-      APP_TIMEZONE: ${APP_TIMEZONE:-UTC}
-      PUBLISHER_MODE: ${PUBLISHER_MODE:-dry-run}
-      LINKEDIN_ACCESS_TOKEN: ${LINKEDIN_ACCESS_TOKEN:-}
-      LINKEDIN_AUTHOR_URN: ${LINKEDIN_AUTHOR_URN:-}
-      LINKEDIN_API_BASE_URL: ${LINKEDIN_API_BASE_URL:-https://api.linkedin.com}
-      FACEBOOK_PAGE_ACCESS_TOKEN: ${FACEBOOK_PAGE_ACCESS_TOKEN:-}
-      FACEBOOK_PAGE_ID: ${FACEBOOK_PAGE_ID:-}
-      FACEBOOK_API_BASE_URL: ${FACEBOOK_API_BASE_URL:-https://graph.facebook.com/v22.0}
     ports:
       - "8080:8080"
     volumes:
-      - linkedin_cron_data:/data
-
-  linkedin-cron-scheduler:
-    image: ghcr.io/joeblack2k/stroopwafel-linkedin-cron:${IMAGE_TAG:-latest}
-    container_name: linkedin-cron-scheduler
-    restart: unless-stopped
-    pull_policy: always
-    environment:
-      APP_DB_PATH: /data/linkedin-cron.db
-      APP_TIMEZONE: ${APP_TIMEZONE:-UTC}
-      PUBLISHER_MODE: ${PUBLISHER_MODE:-dry-run}
-      LINKEDIN_ACCESS_TOKEN: ${LINKEDIN_ACCESS_TOKEN:-}
-      LINKEDIN_AUTHOR_URN: ${LINKEDIN_AUTHOR_URN:-}
-      LINKEDIN_API_BASE_URL: ${LINKEDIN_API_BASE_URL:-https://api.linkedin.com}
-      FACEBOOK_PAGE_ACCESS_TOKEN: ${FACEBOOK_PAGE_ACCESS_TOKEN:-}
-      FACEBOOK_PAGE_ID: ${FACEBOOK_PAGE_ID:-}
-      FACEBOOK_API_BASE_URL: ${FACEBOOK_API_BASE_URL:-https://graph.facebook.com/v22.0}
-    entrypoint: ["/bin/sh", "-c", "while true; do /usr/local/bin/linkedin-cron-scheduler; sleep 60; done"]
-    depends_on:
-      - linkedin-cron-server
-    volumes:
-      - linkedin_cron_data:/data
-
-volumes:
-  linkedin_cron_data:
+      - /opt/stacks/tools/stroopwafel:/data

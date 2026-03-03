@@ -1,10 +1,4 @@
 services:
-  linkedin-cron-server:
-    image: ghcr.io/joeblack2k/stroopwafel-linkedin-cron:${IMAGE_TAG:-latest}
-    build: null
-    pull_policy: always
-
-  linkedin-cron-scheduler:
+  stroopwafel:
     image: ghcr.io/joeblack2k/stroopwafel-linkedin-cron:${IMAGE_TAG:-latest}
     pull_policy: always
-
