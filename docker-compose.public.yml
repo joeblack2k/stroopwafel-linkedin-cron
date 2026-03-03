@@ -8,9 +8,9 @@ services:
       APP_ADDR: ${APP_ADDR:-:8080}
       APP_BASE_URL: ${APP_BASE_URL:-https://social.example.com}
       APP_DB_PATH: /data/linkedin-cron.db
-      APP_BASIC_AUTH_USER: ${APP_BASIC_AUTH_USER:-admin}
-      APP_BASIC_AUTH_PASS: ${APP_BASIC_AUTH_PASS:-admin}
-      APP_STATIC_API_KEYS: ${APP_STATIC_API_KEYS:-bot:bot-change-me}
+      APP_BASIC_AUTH_USER: admin
+      APP_BASIC_AUTH_PASS: admin
+      APP_STATIC_API_KEYS: bot:bot-change-me
       APP_SESSION_SECURE: ${APP_SESSION_SECURE:-true}
       APP_TIMEZONE: ${APP_TIMEZONE:-UTC}
       PUBLISHER_MODE: ${PUBLISHER_MODE:-dry-run}

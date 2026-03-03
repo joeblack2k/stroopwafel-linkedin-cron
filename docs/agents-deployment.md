@@ -33,6 +33,8 @@ Default auth values in that compose:
 - Basic auth: `admin/admin`
 - Static API key for bots: `bot:bot-change-me` via `APP_STATIC_API_KEYS`
 
+For production, edit `docker-compose.public.yml` and replace both defaults before exposing the service publicly.
+
 ### Pull-only deploy/update (recommended for hosts)
 
 Use `scripts/deploy-ghcr.sh` with a PAT that has `read:packages`:

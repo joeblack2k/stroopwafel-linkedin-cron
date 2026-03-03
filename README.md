@@ -329,6 +329,8 @@ Defaults in that file:
 - UI/API Basic Auth: `admin` / `admin`
 - Static bot key: `bot:bot-change-me` (set `APP_STATIC_API_KEYS` to your real key)
 
+If you want different credentials/keys in public mode, edit `docker-compose.public.yml` before deploy.
+
 ## Import from Postiz
 
 Import LinkedIn login + queued calendar posts from Postiz into this app:
