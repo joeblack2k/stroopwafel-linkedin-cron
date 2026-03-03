@@ -119,6 +119,15 @@ curl -X POST http://localhost:8080/api/v1/posts/bulk/channels \
   -d '{"post_ids": [1,2,3], "channel_ids": [1]}'
 ```
 
+Bulk API responses return a result envelope:
+
+- `requested`
+- `succeeded`
+- `failed`
+- `errors` (per-post details)
+
+Agents should treat `failed > 0` as partial success and retry only the failed post IDs.
+
 ## Delivery history
 
 Per-post channel attempt history (paginated + date-range):

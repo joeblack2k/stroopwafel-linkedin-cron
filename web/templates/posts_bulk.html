@@ -22,8 +22,28 @@
     <h2>Bulk actions</h2>
     {{if .Message}}<div class="notice success">{{.Message}}</div>{{end}}
     {{if .Error}}<div class="notice error">{{.Error}}</div>{{end}}
+    {{if .HasFailurePrefill}}
+      <div class="notice warn">Retry helper selected {{.FailedPostCount}} failed post(s). Review and submit again.</div>
+    {{end}}
 
-    <form method="post" action="/posts/bulk/channels" class="stack">
+    <form id="bulk-form" method="post" action="/posts/bulk/channels" class="stack" data-has-server-selections="{{if .HasServerSelections}}1{{else}}0{{end}}" data-has-failure-prefill="{{if .HasFailurePrefill}}1{{else}}0{{end}}" data-last-action="{{.LastAction}}">
+      <section class="bulk-toolbar">
+        <h3>Selection controls</h3>
+        <p class="muted">Selections are remembered in your browser. Active action: <strong id="selected-action-label">{{.LastActionLabel}}</strong>.</p>
+        <div class="button-row wrap">
+          <button type="button" class="button ghost" id="bulk-select-all">Select all visible</button>
+          <button type="button" class="button ghost" id="bulk-select-scheduled">Select scheduled</button>
+          <button type="button" class="button ghost" id="bulk-select-unsent">Select unsent</button>
+          <button type="button" class="button ghost" id="bulk-clear-posts">Clear post selection</button>
+        </div>
+        <div class="button-row wrap">
+          <button type="button" class="button ghost" id="bulk-select-channels-all">Select all channels</button>
+          <button type="button" class="button ghost" id="bulk-clear-channels">Clear channel selection</button>
+        </div>
+        <p class="muted" id="bulk-selection-summary">Selected <strong id="selected-post-count">0</strong>/{{len .Posts}} posts and <strong id="selected-channel-count">0</strong>/{{len .Channels}} channels.</p>
+        <p class="muted" id="bulk-selection-status">Ready.</p>
+      </section>
+
       <section class="actions">
         <h3>Select posts</h3>
         <p class="muted">Showing the most recent {{len .Posts}} posts.</p>
@@ -41,7 +61,7 @@
             {{if .Posts}}
               {{range .Posts}}
                 <tr>
-                  <td><input type="checkbox" name="post_ids" value="{{.ID}}"></td>
+                  <td><input type="checkbox" name="post_ids" value="{{.ID}}" class="bulk-post-checkbox" data-status="{{.Status}}" {{if index $.SelectedPostIDs .ID}}checked{{end}}></td>
                   <td>{{.ID}}</td>
                   <td>{{.Status}}</td>
                   <td>{{fmtTime .ScheduledAt $.Location}}</td>
@@ -65,7 +85,7 @@
           {{if .Channels}}
             {{range .Channels}}
               <label class="checkbox-row">
-                <input type="checkbox" name="channel_ids" value="{{.ID}}">
+                <input type="checkbox" name="channel_ids" value="{{.ID}}" class="bulk-channel-checkbox" {{if index $.SelectedChannelIDs .ID}}checked{{end}}>
                 <span>{{.DisplayName}} ({{.Type}} · {{.Status}})</span>
               </label>
             {{end}}
@@ -75,11 +95,193 @@
         </fieldset>
       </section>
 
+      <section class="bulk-confirm">
+        <h3>Safety check</h3>
+        <label class="checkbox-row">
+          <input type="checkbox" id="confirm-bulk" name="confirm_bulk" value="yes">
+          <span>I reviewed this selection and want to run the bulk action.</span>
+        </label>
+      </section>
+
       <div class="button-row">
-        <button type="submit" formaction="/posts/bulk/channels">Apply channels</button>
-        <button type="submit" formaction="/posts/bulk/send-now">Send now selected</button>
+        <button type="submit" formaction="/posts/bulk/channels" data-bulk-action="channels">Apply channels</button>
+        <button type="submit" formaction="/posts/bulk/send-now" class="danger" data-bulk-action="send-now">Send now selected</button>
       </div>
     </form>
   </main>
+
+  <script>
+    (() => {
+      const form = document.getElementById("bulk-form");
+      if (!form) {
+        return;
+      }
+
+      const postBoxes = Array.from(form.querySelectorAll(".bulk-post-checkbox"));
+      const channelBoxes = Array.from(form.querySelectorAll(".bulk-channel-checkbox"));
+      const confirmBox = document.getElementById("confirm-bulk");
+      const postCount = document.getElementById("selected-post-count");
+      const channelCount = document.getElementById("selected-channel-count");
+      const status = document.getElementById("bulk-selection-status");
+      const actionLabel = document.getElementById("selected-action-label");
+
+      const hasServerSelections = form.dataset.hasServerSelections === "1";
+      const hasFailurePrefill = form.dataset.hasFailurePrefill === "1";
+      const storagePostsKey = "linkedin-cron.bulk.posts";
+      const storageChannelsKey = "linkedin-cron.bulk.channels";
+      const storageConfirmKey = "linkedin-cron.bulk.confirm";
+
+      function readSet(key) {
+        try {
+          const raw = window.localStorage.getItem(key);
+          if (!raw) {
+            return new Set();
+          }
+          const parsed = JSON.parse(raw);
+          if (!Array.isArray(parsed)) {
+            return new Set();
+          }
+          return new Set(parsed.map((value) => String(value).trim()).filter((value) => value));
+        } catch (_) {
+          return new Set();
+        }
+      }
+
+      function writeSet(key, values) {
+        try {
+          window.localStorage.setItem(key, JSON.stringify(values));
+        } catch (_) {
+          // ignore storage failures
+        }
+      }
+
+      function selectedValues(checkboxes) {
+        return checkboxes.filter((checkbox) => checkbox.checked).map((checkbox) => checkbox.value);
+      }
+
+      function countByStatus() {
+        const counters = {
+          draft: 0,
+          scheduled: 0,
+          failed: 0,
+          sent: 0,
+        };
+        postBoxes.forEach((checkbox) => {
+          if (!checkbox.checked) {
+            return;
+          }
+          const key = String(checkbox.dataset.status || "").toLowerCase();
+          if (Object.prototype.hasOwnProperty.call(counters, key)) {
+            counters[key] += 1;
+          }
+        });
+        return counters;
+      }
+
+      function updateSummary() {
+        const selectedPosts = selectedValues(postBoxes);
+        const selectedChannels = selectedValues(channelBoxes);
+        const counters = countByStatus();
+
+        if (postCount) {
+          postCount.textContent = String(selectedPosts.length);
+        }
+        if (channelCount) {
+          channelCount.textContent = String(selectedChannels.length);
+        }
+        if (status) {
+          if (selectedPosts.length === 0) {
+            status.textContent = "No posts selected yet.";
+          } else {
+            status.textContent = `Selected status mix: scheduled ${counters.scheduled}, draft ${counters.draft}, failed ${counters.failed}, sent ${counters.sent}.`;
+          }
+        }
+
+        writeSet(storagePostsKey, selectedPosts);
+        writeSet(storageChannelsKey, selectedChannels);
+        if (confirmBox) {
+          writeSet(storageConfirmKey, confirmBox.checked ? ["1"] : []);
+        }
+      }
+
+      function applyStoredSelections() {
+        if (hasServerSelections || hasFailurePrefill) {
+          return;
+        }
+
+        const postSet = readSet(storagePostsKey);
+        const channelSet = readSet(storageChannelsKey);
+        const confirmSet = readSet(storageConfirmKey);
+
+        postBoxes.forEach((checkbox) => {
+          checkbox.checked = postSet.has(String(checkbox.value));
+        });
+        channelBoxes.forEach((checkbox) => {
+          checkbox.checked = channelSet.has(String(checkbox.value));
+        });
+        if (confirmBox) {
+          confirmBox.checked = confirmSet.has("1");
+        }
+      }
+
+      function selectPostsBy(filterFn) {
+        postBoxes.forEach((checkbox) => {
+          checkbox.checked = filterFn(checkbox);
+        });
+        updateSummary();
+      }
+
+      function selectChannels(checked) {
+        channelBoxes.forEach((checkbox) => {
+          checkbox.checked = checked;
+        });
+        updateSummary();
+      }
+
+      form.querySelectorAll("[data-bulk-action]").forEach((button) => {
+        button.addEventListener("click", () => {
+          if (!actionLabel) {
+            return;
+          }
+          if (button.dataset.bulkAction === "send-now") {
+            actionLabel.textContent = "Send now";
+            return;
+          }
+          actionLabel.textContent = "Apply channels";
+        });
+      });
+
+      document.getElementById("bulk-select-all")?.addEventListener("click", () => selectPostsBy(() => true));
+      document.getElementById("bulk-select-scheduled")?.addEventListener("click", () => selectPostsBy((checkbox) => checkbox.dataset.status === "scheduled"));
+      document.getElementById("bulk-select-unsent")?.addEventListener("click", () => selectPostsBy((checkbox) => checkbox.dataset.status !== "sent"));
+      document.getElementById("bulk-clear-posts")?.addEventListener("click", () => selectPostsBy(() => false));
+      document.getElementById("bulk-select-channels-all")?.addEventListener("click", () => selectChannels(true));
+      document.getElementById("bulk-clear-channels")?.addEventListener("click", () => selectChannels(false));
+
+      postBoxes.forEach((checkbox) => checkbox.addEventListener("change", updateSummary));
+      channelBoxes.forEach((checkbox) => checkbox.addEventListener("change", updateSummary));
+      confirmBox?.addEventListener("change", updateSummary);
+
+      form.addEventListener("submit", (event) => {
+        const selectedPosts = selectedValues(postBoxes);
+        if (selectedPosts.length === 0) {
+          event.preventDefault();
+          if (status) {
+            status.textContent = "Select at least one post before submitting.";
+          }
+          return;
+        }
+        if (confirmBox && !confirmBox.checked) {
+          event.preventDefault();
+          if (status) {
+            status.textContent = "Confirm the action before submitting.";
+          }
+        }
+      });
+
+      applyStoredSelections();
+      updateSummary();
+    })();
+  </script>
 </body>
 </html>

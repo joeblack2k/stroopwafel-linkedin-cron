@@ -82,5 +82,7 @@ Bring the product closer to Postiz by introducing channel management and post-to
    - Added date-range filtering (`attempted_from`, `attempted_to`) for `/api/v1/posts/{id}/attempts`
    - Added date-range controls on `/posts/{id}/history`
 
-3. **Bulk UX polish (next)**
-   - Saved selections, safer confirmation UX, and partial-failure retry helpers
+3. **Bulk UX polish (phase 3 implemented)**
+   - Added selection memory in `/posts/bulk` using lightweight browser `localStorage`
+   - Added explicit bulk confirmation guardrail (client + server)
+   - Added partial-failure retry helper with failed-post preselection on redirect

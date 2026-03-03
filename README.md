@@ -127,6 +127,12 @@ Security behavior:
 - `POST /settings/channels/{id}/enable`
 - `POST /settings/channels/{id}/delete`
 
+Bulk UI highlights:
+
+- `/posts/bulk` keeps post/channel selections in browser `localStorage` (no backend session state).
+- Bulk actions require an explicit confirmation checkbox and are also validated server-side.
+- Partial failures return with failed post IDs preselected, so retries are one click.
+
 ## JSON API Endpoints
 
 - `GET /api/v1/healthz`
