@@ -16,6 +16,7 @@ import (
 	"linkedin-cron/internal/db"
 	"linkedin-cron/internal/facebook"
 	"linkedin-cron/internal/handlers"
+	"linkedin-cron/internal/instagram"
 	"linkedin-cron/internal/linkedin"
 	"linkedin-cron/internal/model"
 	"linkedin-cron/internal/publisher"
@@ -133,12 +134,20 @@ func registerProtectedRoutes(mux *http.ServeMux, uiAuth func(http.Handler) http.
 	staticHandler := http.StripPrefix("/static/", http.FileServer(http.Dir(staticDir)))
 	mux.Handle("GET /static/", staticHandler)
 
+	mediaDir := filepath.Join(app.Config.DataDir, "uploads")
+	_ = os.MkdirAll(mediaDir, 0o755)
+	mediaHandler := http.StripPrefix("/media/", http.FileServer(http.Dir(mediaDir)))
+	mux.Handle("GET /media/", mediaHandler)
+
 	mux.Handle("GET /calendar", uiAuth(http.HandlerFunc(app.Calendar)))
+	mux.Handle("GET /analytics", uiAuth(http.HandlerFunc(app.Analytics)))
+	mux.Handle("GET /analytics/data", uiAuth(http.HandlerFunc(app.AnalyticsData)))
 	mux.Handle("GET /posts/new", uiAuth(http.HandlerFunc(app.NewPost)))
 	mux.Handle("GET /posts/bulk", uiAuth(http.HandlerFunc(app.BulkPosts)))
 	mux.Handle("POST /posts/bulk/channels", uiAuth(http.HandlerFunc(app.BulkSetPostChannels)))
 	mux.Handle("POST /posts/bulk/send-now", uiAuth(http.HandlerFunc(app.BulkSendNowPosts)))
 	mux.Handle("POST /posts", uiAuth(http.HandlerFunc(app.CreatePost)))
+	mux.Handle("POST /media/upload", uiAuth(http.HandlerFunc(app.UploadMediaUI)))
 	mux.Handle("GET /posts/{id}", uiAuth(http.HandlerFunc(app.ViewPost)))
 	mux.Handle("GET /posts/{id}/edit", uiAuth(http.HandlerFunc(app.EditPost)))
 	mux.Handle("GET /posts/{id}/history", uiAuth(http.HandlerFunc(app.PostHistory)))
@@ -161,33 +170,39 @@ func registerProtectedRoutes(mux *http.ServeMux, uiAuth func(http.Handler) http.
 	mux.Handle("POST /settings/channels/{id}/disable", uiAuth(http.HandlerFunc(app.DisableChannel)))
 	mux.Handle("POST /settings/channels/{id}/enable", uiAuth(http.HandlerFunc(app.EnableChannel)))
 
+	apiMutating := func(handler http.HandlerFunc) http.Handler {
+		return apiAuth(http.HandlerFunc(app.WithAPIIdempotency(handler)))
+	}
+
 	mux.Handle("GET /api/v1/posts", apiAuth(http.HandlerFunc(app.APIListPosts)))
 	mux.Handle("GET /api/v1/posts/{id}", apiAuth(http.HandlerFunc(app.APIGetPost)))
-	mux.Handle("POST /api/v1/posts", apiAuth(http.HandlerFunc(app.APICreatePost)))
-	mux.Handle("POST /api/v1/posts/guardrails", apiAuth(http.HandlerFunc(app.APICheckPostGuardrails)))
-	mux.Handle("PUT /api/v1/posts/{id}", apiAuth(http.HandlerFunc(app.APIUpdatePost)))
-	mux.Handle("DELETE /api/v1/posts/{id}", apiAuth(http.HandlerFunc(app.APIDeletePost)))
-	mux.Handle("POST /api/v1/posts/{id}/send-now", apiAuth(http.HandlerFunc(app.APISendNowPost)))
-	mux.Handle("POST /api/v1/posts/{id}/send-and-delete", apiAuth(http.HandlerFunc(app.APISendAndDeletePost)))
-	mux.Handle("POST /api/v1/posts/{id}/reschedule", apiAuth(http.HandlerFunc(app.APIReschedulePost)))
+	mux.Handle("POST /api/v1/posts", apiMutating(app.APICreatePost))
+	mux.Handle("POST /api/v1/media/upload", apiAuth(http.HandlerFunc(app.APIUploadMedia)))
+	mux.Handle("POST /api/v1/posts/guardrails", apiMutating(app.APICheckPostGuardrails))
+	mux.Handle("PUT /api/v1/posts/{id}", apiMutating(app.APIUpdatePost))
+	mux.Handle("DELETE /api/v1/posts/{id}", apiMutating(app.APIDeletePost))
+	mux.Handle("POST /api/v1/posts/{id}/send-now", apiMutating(app.APISendNowPost))
+	mux.Handle("POST /api/v1/posts/{id}/send-and-delete", apiMutating(app.APISendAndDeletePost))
+	mux.Handle("POST /api/v1/posts/{id}/reschedule", apiMutating(app.APIReschedulePost))
 	mux.Handle("GET /api/v1/posts/{id}/attempts", apiAuth(http.HandlerFunc(app.APIListPostAttempts)))
-	mux.Handle("POST /api/v1/posts/{id}/attempts/{attempt_id}/screenshot", apiAuth(http.HandlerFunc(app.APISetPostAttemptScreenshot)))
-	mux.Handle("POST /api/v1/posts/{id}/attempts/{attempt_id}/retry", apiAuth(http.HandlerFunc(app.APIRetryPostAttempt)))
-	mux.Handle("POST /api/v1/posts/bulk/send-now", apiAuth(http.HandlerFunc(app.APIBulkSendNowPosts)))
-	mux.Handle("POST /api/v1/posts/bulk/channels", apiAuth(http.HandlerFunc(app.APIBulkSetPostChannels)))
+	mux.Handle("POST /api/v1/posts/{id}/attempts/{attempt_id}/screenshot", apiMutating(app.APISetPostAttemptScreenshot))
+	mux.Handle("POST /api/v1/posts/{id}/attempts/{attempt_id}/retry", apiMutating(app.APIRetryPostAttempt))
+	mux.Handle("POST /api/v1/posts/bulk/send-now", apiMutating(app.APIBulkSendNowPosts))
+	mux.Handle("POST /api/v1/posts/bulk/channels", apiMutating(app.APIBulkSetPostChannels))
 	mux.Handle("GET /api/v1/settings/status", apiAuth(http.HandlerFunc(app.APISettingsStatus)))
+	mux.Handle("GET /api/v1/analytics/overview", apiAuth(http.HandlerFunc(app.APIAnalyticsOverview)))
 	mux.Handle("GET /api/v1/analytics/weekly-snapshot", apiAuth(http.HandlerFunc(app.APIWeeklySnapshot)))
-	mux.Handle("POST /api/v1/settings/bot-handoff", apiAuth(http.HandlerFunc(app.APICreateBotHandoff)))
+	mux.Handle("POST /api/v1/settings/bot-handoff", apiMutating(app.APICreateBotHandoff))
 	mux.Handle("GET /api/v1/channels", apiAuth(http.HandlerFunc(app.APIListChannels)))
-	mux.Handle("POST /api/v1/channels", apiAuth(http.HandlerFunc(app.APICreateChannel)))
-	mux.Handle("PUT /api/v1/channels/{id}", apiAuth(http.HandlerFunc(app.APIUpdateChannel)))
+	mux.Handle("POST /api/v1/channels", apiMutating(app.APICreateChannel))
+	mux.Handle("PUT /api/v1/channels/{id}", apiMutating(app.APIUpdateChannel))
 	mux.Handle("GET /api/v1/channels/{id}/rules", apiAuth(http.HandlerFunc(app.APIGetChannelRules)))
-	mux.Handle("PUT /api/v1/channels/{id}/rules", apiAuth(http.HandlerFunc(app.APIUpdateChannelRules)))
+	mux.Handle("PUT /api/v1/channels/{id}/rules", apiMutating(app.APIUpdateChannelRules))
 	mux.Handle("GET /api/v1/channels/{id}/audit", apiAuth(http.HandlerFunc(app.APIListChannelAuditEvents)))
-	mux.Handle("DELETE /api/v1/channels/{id}", apiAuth(http.HandlerFunc(app.APIDeleteChannel)))
-	mux.Handle("POST /api/v1/channels/{id}/test", apiAuth(http.HandlerFunc(app.APITestChannel)))
-	mux.Handle("POST /api/v1/channels/{id}/disable", apiAuth(http.HandlerFunc(app.APIDisableChannel)))
-	mux.Handle("POST /api/v1/channels/{id}/enable", apiAuth(http.HandlerFunc(app.APIEnableChannel)))
+	mux.Handle("DELETE /api/v1/channels/{id}", apiMutating(app.APIDeleteChannel))
+	mux.Handle("POST /api/v1/channels/{id}/test", apiMutating(app.APITestChannel))
+	mux.Handle("POST /api/v1/channels/{id}/disable", apiMutating(app.APIDisableChannel))
+	mux.Handle("POST /api/v1/channels/{id}/enable", apiMutating(app.APIEnableChannel))
 }
 
 func buildPublisher(cfg config.Config, logger *slog.Logger) (publisher.Publisher, string) {
@@ -237,6 +252,17 @@ func buildChannelPublisher(channel model.Channel, logger *slog.Logger) publisher
 		)
 	case model.ChannelTypeDryRun:
 		return publisher.NewDryRunPublisher(logger)
+	case model.ChannelTypeInstagram:
+		baseURL := strings.TrimSpace(derefNullableString(channel.InstagramAPIBaseURL))
+		if baseURL == "" {
+			baseURL = "https://graph.facebook.com/v22.0"
+		}
+		return instagram.NewPublisher(
+			baseURL,
+			derefNullableString(channel.InstagramAccessToken),
+			derefNullableString(channel.InstagramBusinessAccountID),
+			logger,
+		)
 	default:
 		return nil
 	}

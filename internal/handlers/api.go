@@ -15,6 +15,7 @@ type postPayload struct {
 	ScheduledAt *string `json:"scheduled_at"`
 	Text        string  `json:"text"`
 	Status      string  `json:"status"`
+	MediaType   *string `json:"media_type"`
 	MediaURL    *string `json:"media_url"`
 	ChannelIDs  []int64 `json:"channel_ids,omitempty"`
 }
@@ -37,6 +38,7 @@ type postResponse struct {
 	SentAt      *string `json:"sent_at,omitempty"`
 	FailCount   int     `json:"fail_count"`
 	LastError   *string `json:"last_error,omitempty"`
+	MediaType   *string `json:"media_type,omitempty"`
 	MediaURL    *string `json:"media_url,omitempty"`
 	NextRetryAt *string `json:"next_retry_at,omitempty"`
 	ChannelIDs  []int64 `json:"channel_ids,omitempty"`
@@ -111,6 +113,10 @@ func (a *App) APICreatePost(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, http.StatusBadRequest, validationErr.Error())
 		return
 	}
+	if validationErr := a.validatePostAgainstChannelCapabilities(r.Context(), input.MediaType, input.MediaURL, channelIDs); validationErr != nil {
+		writeAPIError(w, http.StatusBadRequest, validationErr.Error())
+		return
+	}
 
 	created, err := a.Store.CreatePost(r.Context(), input)
 	if err != nil {
@@ -160,6 +166,10 @@ func (a *App) APIUpdatePost(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if validationErr := a.validatePostAgainstChannelRules(r.Context(), input.Text, channelIDs); validationErr != nil {
+		writeAPIError(w, http.StatusBadRequest, validationErr.Error())
+		return
+	}
+	if validationErr := a.validatePostAgainstChannelCapabilities(r.Context(), input.MediaType, input.MediaURL, channelIDs); validationErr != nil {
 		writeAPIError(w, http.StatusBadRequest, validationErr.Error())
 		return
 	}
@@ -317,16 +327,35 @@ func (a *App) APIReschedulePost(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, http.StatusInternalServerError, "failed to load post channels")
 		return
 	}
+	mediaType, mediaErr := a.Store.GetPostMediaType(r.Context(), post.ID)
+	if mediaErr != nil {
+		if errors.Is(mediaErr, db.ErrNotFound) {
+			writeAPIError(w, http.StatusNotFound, "post not found")
+			return
+		}
+		writeAPIError(w, http.StatusInternalServerError, "failed to load post media_type")
+		return
+	}
+	if validationErr := model.ValidateEditableInput(post.Text, status, scheduledAt, post.MediaURL, mediaType); validationErr != nil {
+		writeAPIError(w, http.StatusBadRequest, validationErr.Error())
+		return
+	}
 	if validationErr := a.validatePostAgainstChannelRules(r.Context(), post.Text, channelIDs); validationErr != nil {
+		writeAPIError(w, http.StatusBadRequest, validationErr.Error())
+		return
+	}
+	if validationErr := a.validatePostAgainstChannelCapabilities(r.Context(), mediaType, post.MediaURL, channelIDs); validationErr != nil {
 		writeAPIError(w, http.StatusBadRequest, validationErr.Error())
 		return
 	}
 
 	updated, err := a.Store.UpdatePost(r.Context(), id, db.PostInput{
-		ScheduledAt: scheduledAt,
-		Text:        post.Text,
-		Status:      status,
-		MediaURL:    post.MediaURL,
+		ScheduledAt:  scheduledAt,
+		Text:         post.Text,
+		Status:       status,
+		MediaType:    mediaType,
+		MediaTypeSet: true,
+		MediaURL:     post.MediaURL,
 	})
 	if err != nil {
 		if errors.Is(err, db.ErrNotFound) {
@@ -395,8 +424,12 @@ func parsePostPayload(payload postPayload) (db.PostInput, []int64, error) {
 			mediaURL = &trimmed
 		}
 	}
+	mediaType := model.NormalizeMediaType(payload.MediaType)
+	if mediaURL != nil && mediaType == nil {
+		mediaType = model.InferMediaTypeFromURL(*mediaURL)
+	}
 
-	if err := model.ValidateEditableInput(text, status, scheduledAt, mediaURL); err != nil {
+	if err := model.ValidateEditableInput(text, status, scheduledAt, mediaURL, mediaType); err != nil {
 		return db.PostInput{}, nil, err
 	}
 
@@ -405,11 +438,15 @@ func parsePostPayload(payload postPayload) (db.PostInput, []int64, error) {
 		return db.PostInput{}, nil, errors.New("at least one channel is required when status is scheduled")
 	}
 
-	return db.PostInput{ScheduledAt: scheduledAt, Text: text, Status: status, MediaURL: mediaURL}, channelIDs, nil
+	return db.PostInput{ScheduledAt: scheduledAt, Text: text, Status: status, MediaType: mediaType, MediaTypeSet: true, MediaURL: mediaURL}, channelIDs, nil
 }
 
 func (a *App) mapPostResponse(ctx context.Context, post model.Post) (postResponse, error) {
 	channelIDs, err := a.Store.ListPostChannelIDs(ctx, post.ID)
+	if err != nil {
+		return postResponse{}, err
+	}
+	mediaType, err := a.Store.GetPostMediaType(ctx, post.ID)
 	if err != nil {
 		return postResponse{}, err
 	}
@@ -422,6 +459,7 @@ func (a *App) mapPostResponse(ctx context.Context, post model.Post) (postRespons
 		UpdatedAt:  post.UpdatedAt.UTC().Format(time.RFC3339),
 		FailCount:  post.FailCount,
 		LastError:  post.LastError,
+		MediaType:  mediaType,
 		MediaURL:   post.MediaURL,
 		ChannelIDs: channelIDs,
 	}

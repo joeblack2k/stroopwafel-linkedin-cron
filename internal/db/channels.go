@@ -13,14 +13,17 @@ import (
 )
 
 type ChannelInput struct {
-	Type                    model.ChannelType
-	DisplayName             string
-	LinkedInAccessToken     *string
-	LinkedInAuthorURN       *string
-	LinkedInAPIBaseURL      *string
-	FacebookPageAccessToken *string
-	FacebookPageID          *string
-	FacebookAPIBaseURL      *string
+	Type                       model.ChannelType
+	DisplayName                string
+	LinkedInAccessToken        *string
+	LinkedInAuthorURN          *string
+	LinkedInAPIBaseURL         *string
+	FacebookPageAccessToken    *string
+	FacebookPageID             *string
+	FacebookAPIBaseURL         *string
+	InstagramAccessToken       *string
+	InstagramBusinessAccountID *string
+	InstagramAPIBaseURL        *string
 }
 
 func (s *Store) CreateChannel(ctx context.Context, input ChannelInput) (model.Channel, error) {
@@ -47,8 +50,11 @@ func (s *Store) CreateChannel(ctx context.Context, input ChannelInput) (model.Ch
 			 linkedin_api_base_url,
 			 facebook_page_access_token,
 			 facebook_page_id,
-			 facebook_api_base_url
-		 ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			 facebook_api_base_url,
+			 instagram_access_token,
+			 instagram_business_account_id,
+			 instagram_api_base_url
+		 ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		string(input.Type),
 		strings.TrimSpace(input.DisplayName),
 		status,
@@ -62,6 +68,9 @@ func (s *Store) CreateChannel(ctx context.Context, input ChannelInput) (model.Ch
 		nullableString(input.FacebookPageAccessToken),
 		nullableString(input.FacebookPageID),
 		nullableString(input.FacebookAPIBaseURL),
+		nullableString(input.InstagramAccessToken),
+		nullableString(input.InstagramBusinessAccountID),
+		nullableString(input.InstagramAPIBaseURL),
 	)
 	if err != nil {
 		return model.Channel{}, fmt.Errorf("insert channel: %w", err)
@@ -78,7 +87,8 @@ func (s *Store) GetChannel(ctx context.Context, id int64) (model.Channel, error)
 		ctx,
 		`SELECT id, type, display_name, status, created_at, updated_at, last_test_at, last_error,
 			linkedin_access_token, linkedin_author_urn, linkedin_api_base_url,
-			facebook_page_access_token, facebook_page_id, facebook_api_base_url
+			facebook_page_access_token, facebook_page_id, facebook_api_base_url,
+			instagram_access_token, instagram_business_account_id, instagram_api_base_url
 		 FROM channels
 		 WHERE id = ?`,
 		id,
@@ -98,7 +108,8 @@ func (s *Store) ListChannels(ctx context.Context) ([]model.Channel, error) {
 		ctx,
 		`SELECT id, type, display_name, status, created_at, updated_at, last_test_at, last_error,
 			linkedin_access_token, linkedin_author_urn, linkedin_api_base_url,
-			facebook_page_access_token, facebook_page_id, facebook_api_base_url
+			facebook_page_access_token, facebook_page_id, facebook_api_base_url,
+			instagram_access_token, instagram_business_account_id, instagram_api_base_url
 		 FROM channels
 		 ORDER BY created_at DESC, id DESC`,
 	)
@@ -126,7 +137,8 @@ func (s *Store) ListChannelsForPost(ctx context.Context, postID int64) ([]model.
 		ctx,
 		`SELECT c.id, c.type, c.display_name, c.status, c.created_at, c.updated_at, c.last_test_at, c.last_error,
 			c.linkedin_access_token, c.linkedin_author_urn, c.linkedin_api_base_url,
-			c.facebook_page_access_token, c.facebook_page_id, c.facebook_api_base_url
+			c.facebook_page_access_token, c.facebook_page_id, c.facebook_api_base_url,
+			c.instagram_access_token, c.instagram_business_account_id, c.instagram_api_base_url
 		 FROM channels c
 		 INNER JOIN post_channels pc ON pc.channel_id = c.id
 		 WHERE pc.post_id = ?
@@ -316,6 +328,9 @@ func scanChannel(s scanner) (model.Channel, error) {
 		facebookPageAccessToken sql.NullString
 		facebookPageID          sql.NullString
 		facebookAPIBaseURL      sql.NullString
+		instagramAccessToken    sql.NullString
+		instagramBusinessID     sql.NullString
+		instagramAPIBaseURL     sql.NullString
 	)
 
 	if err := s.Scan(
@@ -333,6 +348,9 @@ func scanChannel(s scanner) (model.Channel, error) {
 		&facebookPageAccessToken,
 		&facebookPageID,
 		&facebookAPIBaseURL,
+		&instagramAccessToken,
+		&instagramBusinessID,
+		&instagramAPIBaseURL,
 	); err != nil {
 		return model.Channel{}, err
 	}
@@ -389,6 +407,18 @@ func scanChannel(s scanner) (model.Channel, error) {
 		value := facebookAPIBaseURL.String
 		channel.FacebookAPIBaseURL = &value
 	}
+	if instagramAccessToken.Valid {
+		value := instagramAccessToken.String
+		channel.InstagramAccessToken = &value
+	}
+	if instagramBusinessID.Valid {
+		value := instagramBusinessID.String
+		channel.InstagramBusinessAccountID = &value
+	}
+	if instagramAPIBaseURL.Valid {
+		value := instagramAPIBaseURL.String
+		channel.InstagramAPIBaseURL = &value
+	}
 
 	return channel, nil
 }
@@ -413,6 +443,14 @@ func validateChannelConfig(input ChannelInput) (string, error) {
 			return model.ChannelStatusError, fmt.Errorf("facebook_page_id is required")
 		}
 		return model.ChannelStatusActive, nil
+	case model.ChannelTypeInstagram:
+		if strings.TrimSpace(derefNullableString(input.InstagramAccessToken)) == "" {
+			return model.ChannelStatusError, fmt.Errorf("instagram_access_token is required")
+		}
+		if strings.TrimSpace(derefNullableString(input.InstagramBusinessAccountID)) == "" {
+			return model.ChannelStatusError, fmt.Errorf("instagram_business_account_id is required")
+		}
+		return model.ChannelStatusActive, nil
 	default:
 		return model.ChannelStatusError, fmt.Errorf("unsupported channel type: %s", input.Type)
 	}
@@ -420,14 +458,17 @@ func validateChannelConfig(input ChannelInput) (string, error) {
 
 func validateLoadedChannel(channel model.Channel) error {
 	input := ChannelInput{
-		Type:                    channel.Type,
-		DisplayName:             channel.DisplayName,
-		LinkedInAccessToken:     channel.LinkedInAccessToken,
-		LinkedInAuthorURN:       channel.LinkedInAuthorURN,
-		LinkedInAPIBaseURL:      channel.LinkedInAPIBaseURL,
-		FacebookPageAccessToken: channel.FacebookPageAccessToken,
-		FacebookPageID:          channel.FacebookPageID,
-		FacebookAPIBaseURL:      channel.FacebookAPIBaseURL,
+		Type:                       channel.Type,
+		DisplayName:                channel.DisplayName,
+		LinkedInAccessToken:        channel.LinkedInAccessToken,
+		LinkedInAuthorURN:          channel.LinkedInAuthorURN,
+		LinkedInAPIBaseURL:         channel.LinkedInAPIBaseURL,
+		FacebookPageAccessToken:    channel.FacebookPageAccessToken,
+		FacebookPageID:             channel.FacebookPageID,
+		FacebookAPIBaseURL:         channel.FacebookAPIBaseURL,
+		InstagramAccessToken:       channel.InstagramAccessToken,
+		InstagramBusinessAccountID: channel.InstagramBusinessAccountID,
+		InstagramAPIBaseURL:        channel.InstagramAPIBaseURL,
 	}
 	_, err := validateChannelConfig(input)
 	return err
@@ -476,7 +517,8 @@ func (s *Store) ListChannelsByIDs(ctx context.Context, ids []int64) ([]model.Cha
 
 	query := `SELECT id, type, display_name, status, created_at, updated_at, last_test_at, last_error,
 		linkedin_access_token, linkedin_author_urn, linkedin_api_base_url,
-		facebook_page_access_token, facebook_page_id, facebook_api_base_url
+		facebook_page_access_token, facebook_page_id, facebook_api_base_url,
+		instagram_access_token, instagram_business_account_id, instagram_api_base_url
 	 FROM channels
 	 WHERE id IN (` + placeholders + `)
 	 ORDER BY id ASC`

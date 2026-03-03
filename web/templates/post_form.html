@@ -6,6 +6,7 @@
   <title>{{.Title}} · linkedin-cron</title>
   <link rel="stylesheet" href="/static/style.css">
   <script src="https://unpkg.com/htmx.org@1.9.12" defer></script>
+  <script src="/static/app.js" defer></script>
 </head>
 <body hx-boost="true">
   <header class="topbar">
@@ -14,10 +15,11 @@
       <a href="/calendar">Calendar</a>
       <a href="/posts/new">New Post</a>
       <a href="/posts/bulk">Bulk</a>
+      <a href="/analytics">Analytics</a>
       <a href="/settings">Settings</a>
       <a href="/settings/channels">Channels</a>
-          <a href="/logout">Logout</a>
-</nav>
+      <a href="/logout">Logout</a>
+    </nav>
   </header>
 
   <main class="container narrow">
@@ -25,7 +27,7 @@
     {{if .Message}}<div class="notice success">{{.Message}}</div>{{end}}
     {{if .Error}}<div class="notice error">{{.Error}}</div>{{end}}
 
-    <form method="post" action="{{if .IsEdit}}/posts/{{.PostID}}{{else}}/posts{{end}}" class="stack">
+    <form method="post" action="{{if .IsEdit}}/posts/{{.PostID}}{{else}}/posts{{end}}" class="stack" data-media-group>
       <input type="hidden" name="return_to" value="{{.ReturnTo}}">
 
       <label>
@@ -49,10 +51,33 @@
         </select>
       </label>
 
-      <label>
-        Media URL (optional)
-        <input type="url" name="media_url" value="{{.Form.MediaURL}}" placeholder="https://example.com/article">
-      </label>
+      <fieldset class="media-fieldset">
+        <legend>Media</legend>
+        <label>
+          Media type
+          <select name="media_type" data-media-type>
+            <option value="auto" {{if or (eq .Form.MediaType "") (eq .Form.MediaType "auto")}}selected{{end}}>Auto detect</option>
+            <option value="image" {{if eq .Form.MediaType "image"}}selected{{end}}>Image</option>
+            <option value="video" {{if eq .Form.MediaType "video"}}selected{{end}}>Video</option>
+            <option value="link" {{if eq .Form.MediaType "link"}}selected{{end}}>Link</option>
+          </select>
+        </label>
+
+        <label>
+          Media URL (optional)
+          <input type="url" name="media_url" data-media-url value="{{.Form.MediaURL}}" placeholder="https://example.com/article">
+        </label>
+
+        <label>
+          Upload media file
+          <input type="file" name="media_file" data-media-file accept="image/*,video/*">
+        </label>
+        <div class="button-row wrap">
+          <button type="button" class="ghost" data-media-upload-button>Upload and use media</button>
+          <span class="muted" data-media-upload-status></span>
+        </div>
+        <p class="muted" data-media-hint>Pick a media type for URL guidance.</p>
+      </fieldset>
 
       <fieldset>
         <legend>Channels</legend>
@@ -79,12 +104,12 @@
       <section class="actions">
         <h3>Actions</h3>
         <a class="button" href="/posts/{{.PostID}}/history?return_to={{.ReturnTo}}">History</a>
-        <form method="post" action="/posts/{{.PostID}}/send-now" class="inline">
+        <form method="post" action="/posts/{{.PostID}}/send-now" class="inline" hx-boost="false">
           <input type="hidden" name="return_to" value="/posts/{{.PostID}}/edit">
           <button type="submit">Send now</button>
         </form>
         {{if .AllowDelete}}
-          <form method="post" action="/posts/{{.PostID}}/delete" class="inline">
+          <form method="post" action="/posts/{{.PostID}}/delete" class="inline" hx-boost="false">
             <input type="hidden" name="return_to" value="{{.ReturnTo}}">
             <button type="submit" class="danger">Delete</button>
           </form>

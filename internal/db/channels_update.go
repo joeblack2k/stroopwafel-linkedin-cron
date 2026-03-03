@@ -27,11 +27,17 @@ type ChannelUpdateInput struct {
 	FacebookPageID     *string
 	FacebookAPIBaseURL *string
 
+	InstagramBusinessAccountID *string
+	InstagramAPIBaseURL        *string
+
 	LinkedInAccessTokenAction SecretAction
 	LinkedInAccessToken       *string
 
 	FacebookPageTokenAction SecretAction
 	FacebookPageToken       *string
+
+	InstagramAccessTokenAction SecretAction
+	InstagramAccessToken       *string
 
 	AuditActor  string
 	AuditSource string
@@ -72,21 +78,30 @@ func (s *Store) UpdateChannel(ctx context.Context, id int64, input ChannelUpdate
 	if err != nil {
 		return model.Channel{}, err
 	}
+	instagramToken, instagramAction, err := applySecretAction(existing.InstagramAccessToken, input.InstagramAccessTokenAction, input.InstagramAccessToken, "instagram_access_token")
+	if err != nil {
+		return model.Channel{}, err
+	}
 
 	linkedInAuthorURN := applyNullableStringPatch(existing.LinkedInAuthorURN, input.LinkedInAuthorURN)
 	linkedInAPIBaseURL := applyNullableStringPatch(existing.LinkedInAPIBaseURL, input.LinkedInAPIBaseURL)
 	facebookPageID := applyNullableStringPatch(existing.FacebookPageID, input.FacebookPageID)
 	facebookAPIBaseURL := applyNullableStringPatch(existing.FacebookAPIBaseURL, input.FacebookAPIBaseURL)
+	instagramBusinessAccountID := applyNullableStringPatch(existing.InstagramBusinessAccountID, input.InstagramBusinessAccountID)
+	instagramAPIBaseURL := applyNullableStringPatch(existing.InstagramAPIBaseURL, input.InstagramAPIBaseURL)
 
 	candidate := ChannelInput{
-		Type:                    existing.Type,
-		DisplayName:             displayName,
-		LinkedInAccessToken:     linkedInToken,
-		LinkedInAuthorURN:       linkedInAuthorURN,
-		LinkedInAPIBaseURL:      linkedInAPIBaseURL,
-		FacebookPageAccessToken: facebookToken,
-		FacebookPageID:          facebookPageID,
-		FacebookAPIBaseURL:      facebookAPIBaseURL,
+		Type:                       existing.Type,
+		DisplayName:                displayName,
+		LinkedInAccessToken:        linkedInToken,
+		LinkedInAuthorURN:          linkedInAuthorURN,
+		LinkedInAPIBaseURL:         linkedInAPIBaseURL,
+		FacebookPageAccessToken:    facebookToken,
+		FacebookPageID:             facebookPageID,
+		FacebookAPIBaseURL:         facebookAPIBaseURL,
+		InstagramAccessToken:       instagramToken,
+		InstagramBusinessAccountID: instagramBusinessAccountID,
+		InstagramAPIBaseURL:        instagramAPIBaseURL,
 	}
 	status, validationErr := validateChannelConfig(candidate)
 	lastError := nullableValidationError(validationErr)
@@ -100,18 +115,25 @@ func (s *Store) UpdateChannel(ctx context.Context, id int64, input ChannelUpdate
 		linkedInAPIBaseURL,
 		facebookPageID,
 		facebookAPIBaseURL,
+		instagramBusinessAccountID,
+		instagramAPIBaseURL,
 		newLastError,
 		linkedInAction,
 		facebookAction,
+		instagramAction,
 	)
-	summary := buildChannelAuditSummary(changedFields, linkedInAction, facebookAction)
+	summary := buildChannelAuditSummary(changedFields, linkedInAction, facebookAction, instagramAction)
 
 	metadataPayload := map[string]any{
-		"source":           normalizeAuditSource(input.AuditSource),
-		"changed_fields":   changedFields,
-		"status_before":    existing.Status,
-		"status_after":     status,
-		"secret_actions":   map[string]string{"linkedin_access_token": string(linkedInAction), "facebook_page_access_token": string(facebookAction)},
+		"source":         normalizeAuditSource(input.AuditSource),
+		"changed_fields": changedFields,
+		"status_before":  existing.Status,
+		"status_after":   status,
+		"secret_actions": map[string]string{
+			"linkedin_access_token":      string(linkedInAction),
+			"facebook_page_access_token": string(facebookAction),
+			"instagram_access_token":     string(instagramAction),
+		},
 		"validation_error": validationErrorString(validationErr),
 	}
 	metadataBytes, err := json.Marshal(metadataPayload)
@@ -138,7 +160,10 @@ func (s *Store) UpdateChannel(ctx context.Context, id int64, input ChannelUpdate
 		     linkedin_api_base_url = ?,
 		     facebook_page_access_token = ?,
 		     facebook_page_id = ?,
-		     facebook_api_base_url = ?
+		     facebook_api_base_url = ?,
+		     instagram_access_token = ?,
+		     instagram_business_account_id = ?,
+		     instagram_api_base_url = ?
 		 WHERE id = ?`,
 		displayName,
 		status,
@@ -150,6 +175,9 @@ func (s *Store) UpdateChannel(ctx context.Context, id int64, input ChannelUpdate
 		nullableString(facebookToken),
 		nullableString(facebookPageID),
 		nullableString(facebookAPIBaseURL),
+		nullableString(instagramToken),
+		nullableString(instagramBusinessAccountID),
+		nullableString(instagramAPIBaseURL),
 		id,
 	)
 	if err != nil {
@@ -233,11 +261,14 @@ func collectChangedChannelFields(
 	linkedInAPIBaseURL *string,
 	facebookPageID *string,
 	facebookAPIBaseURL *string,
+	instagramBusinessAccountID *string,
+	instagramAPIBaseURL *string,
 	lastError *string,
 	linkedInAction SecretAction,
 	facebookAction SecretAction,
+	instagramAction SecretAction,
 ) []string {
-	changed := make([]string, 0, 10)
+	changed := make([]string, 0, 13)
 	if existing.DisplayName != displayName {
 		changed = append(changed, "display_name")
 	}
@@ -256,6 +287,12 @@ func collectChangedChannelFields(
 	if nullableStringsDiffer(existing.FacebookAPIBaseURL, facebookAPIBaseURL) {
 		changed = append(changed, "facebook_api_base_url")
 	}
+	if nullableStringsDiffer(existing.InstagramBusinessAccountID, instagramBusinessAccountID) {
+		changed = append(changed, "instagram_business_account_id")
+	}
+	if nullableStringsDiffer(existing.InstagramAPIBaseURL, instagramAPIBaseURL) {
+		changed = append(changed, "instagram_api_base_url")
+	}
 	if nullableStringsDiffer(existing.LastError, lastError) {
 		changed = append(changed, "last_error")
 	}
@@ -265,10 +302,13 @@ func collectChangedChannelFields(
 	if facebookAction != SecretActionKeep {
 		changed = append(changed, "facebook_page_access_token")
 	}
+	if instagramAction != SecretActionKeep {
+		changed = append(changed, "instagram_access_token")
+	}
 	return changed
 }
 
-func buildChannelAuditSummary(changedFields []string, linkedInAction, facebookAction SecretAction) string {
+func buildChannelAuditSummary(changedFields []string, linkedInAction, facebookAction, instagramAction SecretAction) string {
 	segments := make([]string, 0, 2)
 	if len(changedFields) > 0 {
 		segments = append(segments, "updated "+strings.Join(changedFields, ", "))
@@ -280,6 +320,9 @@ func buildChannelAuditSummary(changedFields []string, linkedInAction, facebookAc
 	}
 	if facebookAction != SecretActionKeep {
 		secretActions = append(secretActions, "facebook_page_access_token="+string(facebookAction))
+	}
+	if instagramAction != SecretActionKeep {
+		secretActions = append(secretActions, "instagram_access_token="+string(instagramAction))
 	}
 	if len(secretActions) > 0 {
 		segments = append(segments, "secrets "+strings.Join(secretActions, ", "))

@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>{{.Title}} · linkedin-cron</title>
   <link rel="stylesheet" href="/static/style.css">
+  <script src="/static/app.js" defer></script>
 </head>
 <body>
   <header class="topbar">
@@ -13,10 +14,11 @@
       <a href="/calendar">Calendar</a>
       <a href="/posts/new">New Post</a>
       <a href="/posts/bulk">Bulk</a>
+      <a href="/analytics">Analytics</a>
       <a href="/settings">Settings</a>
       <a href="/settings/channels">Channels</a>
-          <a href="/logout">Logout</a>
-</nav>
+      <a href="/logout">Logout</a>
+    </nav>
   </header>
 
   <main class="container narrow">
@@ -75,6 +77,30 @@
         <label>
           Facebook API base URL
           <input type="url" name="facebook_api_base_url" value="{{.Form.FacebookAPIBaseURL}}" placeholder="https://graph.facebook.com/v22.0">
+        </label>
+      </fieldset>
+
+      <fieldset>
+        <legend>Instagram</legend>
+        <label>
+          Instagram token action
+          <select name="instagram_access_token_action">
+            <option value="keep" {{if eq .Form.InstagramAccessTokenAction "keep"}}selected{{end}}>keep</option>
+            <option value="replace" {{if eq .Form.InstagramAccessTokenAction "replace"}}selected{{end}}>replace</option>
+            <option value="clear" {{if eq .Form.InstagramAccessTokenAction "clear"}}selected{{end}}>clear</option>
+          </select>
+        </label>
+        <label>
+          Instagram new access token
+          <input type="password" name="instagram_access_token" value="{{.Form.InstagramAccessToken}}" placeholder="Only used when action=replace">
+        </label>
+        <label>
+          Instagram business account ID
+          <input type="text" name="instagram_business_account_id" value="{{.Form.InstagramBusinessID}}" placeholder="1784...">
+        </label>
+        <label>
+          Instagram API base URL
+          <input type="url" name="instagram_api_base_url" value="{{.Form.InstagramAPIBaseURL}}" placeholder="https://graph.facebook.com/v22.0">
         </label>
       </fieldset>
 

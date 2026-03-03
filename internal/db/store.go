@@ -27,10 +27,29 @@ type Store struct {
 }
 
 type PostInput struct {
-	ScheduledAt *time.Time
-	Text        string
-	Status      model.PostStatus
-	MediaURL    *string
+	ScheduledAt  *time.Time
+	Text         string
+	Status       model.PostStatus
+	MediaType    *string
+	MediaTypeSet bool
+	MediaURL     *string
+}
+
+type AnalyticsOverview struct {
+	TotalPosts  int
+	SentCount   int
+	FailedCount int
+	RetryCount  int
+	Channels    []AnalyticsChannelBreakdown
+}
+
+type AnalyticsChannelBreakdown struct {
+	ChannelID   int64
+	ChannelType model.ChannelType
+	DisplayName string
+	SentCount   int
+	FailedCount int
+	RetryCount  int
 }
 
 const apiKeyTokenPrefix = "lcak_"
@@ -70,13 +89,14 @@ func (s *Store) CreatePost(ctx context.Context, input PostInput) (model.Post, er
 
 	result, err := s.db.ExecContext(
 		ctx,
-		`INSERT INTO posts(scheduled_at, text, status, created_at, updated_at, media_url) VALUES(?, ?, ?, ?, ?, ?)`,
+		`INSERT INTO posts(scheduled_at, text, status, created_at, updated_at, media_url, media_type) VALUES(?, ?, ?, ?, ?, ?, ?)`,
 		nullableTime(input.ScheduledAt),
 		strings.TrimSpace(input.Text),
 		status,
 		formatDBTime(now),
 		formatDBTime(now),
 		nullableString(input.MediaURL),
+		nullableString(input.MediaType),
 	)
 	if err != nil {
 		return model.Post{}, fmt.Errorf("insert post: %w", err)
@@ -93,12 +113,14 @@ func (s *Store) UpdatePost(ctx context.Context, id int64, input PostInput) (mode
 	result, err := s.db.ExecContext(
 		ctx,
 		`UPDATE posts
-		 SET scheduled_at = ?, text = ?, status = ?, media_url = ?, updated_at = ?
+		 SET scheduled_at = ?, text = ?, status = ?, media_url = ?, media_type = CASE WHEN ? THEN ? ELSE media_type END, updated_at = ?
 		 WHERE id = ?`,
 		nullableTime(input.ScheduledAt),
 		strings.TrimSpace(input.Text),
 		string(input.Status),
 		nullableString(input.MediaURL),
+		input.MediaTypeSet,
+		nullableString(input.MediaType),
 		formatDBTime(now),
 		id,
 	)
@@ -131,6 +153,25 @@ func (s *Store) GetPost(ctx context.Context, id int64) (model.Post, error) {
 		return model.Post{}, fmt.Errorf("get post %d: %w", id, err)
 	}
 	return post, nil
+}
+
+func (s *Store) GetPostMediaType(ctx context.Context, id int64) (*string, error) {
+	row := s.db.QueryRowContext(ctx, `SELECT media_type FROM posts WHERE id = ?`, id)
+	var mediaType sql.NullString
+	if err := row.Scan(&mediaType); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrNotFound
+		}
+		return nil, fmt.Errorf("get post media_type %d: %w", id, err)
+	}
+	if !mediaType.Valid {
+		return nil, nil
+	}
+	trimmed := strings.TrimSpace(mediaType.String)
+	if trimmed == "" {
+		return nil, nil
+	}
+	return &trimmed, nil
 }
 
 func (s *Store) DeletePost(ctx context.Context, id int64) error {
@@ -428,6 +469,84 @@ func (s *Store) AuthenticateAPIKey(ctx context.Context, token string) (model.API
 	}
 	key.LastUsedAt = &now
 	return key, nil
+}
+
+func (s *Store) GetAnalyticsOverview(ctx context.Context) (AnalyticsOverview, error) {
+	overview := AnalyticsOverview{}
+
+	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(1) FROM posts`).Scan(&overview.TotalPosts); err != nil {
+		return AnalyticsOverview{}, fmt.Errorf("count posts for analytics overview: %w", err)
+	}
+
+	if err := s.db.QueryRowContext(
+		ctx,
+		`WITH latest_attempts AS (
+			SELECT pa.post_id, pa.channel_id, pa.status
+			FROM publish_attempts pa
+			INNER JOIN (
+				SELECT post_id, channel_id, MAX(attempt_no) AS max_attempt_no
+				FROM publish_attempts
+				GROUP BY post_id, channel_id
+			) grouped
+			ON grouped.post_id = pa.post_id
+			AND grouped.channel_id = pa.channel_id
+			AND grouped.max_attempt_no = pa.attempt_no
+		)
+		SELECT
+			COALESCE(SUM(CASE WHEN status = 'sent' THEN 1 ELSE 0 END), 0),
+			COALESCE(SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END), 0),
+			COALESCE(SUM(CASE WHEN status = 'retry' THEN 1 ELSE 0 END), 0)
+		FROM latest_attempts`,
+	).Scan(&overview.SentCount, &overview.FailedCount, &overview.RetryCount); err != nil {
+		return AnalyticsOverview{}, fmt.Errorf("count latest publish attempts for analytics overview: %w", err)
+	}
+
+	rows, err := s.db.QueryContext(
+		ctx,
+		`WITH latest_attempts AS (
+			SELECT pa.post_id, pa.channel_id, pa.status
+			FROM publish_attempts pa
+			INNER JOIN (
+				SELECT post_id, channel_id, MAX(attempt_no) AS max_attempt_no
+				FROM publish_attempts
+				GROUP BY post_id, channel_id
+			) grouped
+			ON grouped.post_id = pa.post_id
+			AND grouped.channel_id = pa.channel_id
+			AND grouped.max_attempt_no = pa.attempt_no
+		)
+		SELECT
+			c.id,
+			c.type,
+			c.display_name,
+			COALESCE(SUM(CASE WHEN latest_attempts.status = 'sent' THEN 1 ELSE 0 END), 0),
+			COALESCE(SUM(CASE WHEN latest_attempts.status = 'failed' THEN 1 ELSE 0 END), 0),
+			COALESCE(SUM(CASE WHEN latest_attempts.status = 'retry' THEN 1 ELSE 0 END), 0)
+		FROM channels c
+		LEFT JOIN latest_attempts ON latest_attempts.channel_id = c.id
+		GROUP BY c.id, c.type, c.display_name
+		ORDER BY c.id ASC`,
+	)
+	if err != nil {
+		return AnalyticsOverview{}, fmt.Errorf("query channel analytics breakdown: %w", err)
+	}
+	defer rows.Close()
+
+	overview.Channels = make([]AnalyticsChannelBreakdown, 0)
+	for rows.Next() {
+		var breakdown AnalyticsChannelBreakdown
+		var channelType string
+		if scanErr := rows.Scan(&breakdown.ChannelID, &channelType, &breakdown.DisplayName, &breakdown.SentCount, &breakdown.FailedCount, &breakdown.RetryCount); scanErr != nil {
+			return AnalyticsOverview{}, fmt.Errorf("scan channel analytics breakdown row: %w", scanErr)
+		}
+		breakdown.ChannelType = model.ChannelType(channelType)
+		overview.Channels = append(overview.Channels, breakdown)
+	}
+	if err := rows.Err(); err != nil {
+		return AnalyticsOverview{}, fmt.Errorf("iterate channel analytics breakdown rows: %w", err)
+	}
+
+	return overview, nil
 }
 
 type scanner interface {

@@ -13,6 +13,7 @@ import (
 	"linkedin-cron/internal/config"
 	"linkedin-cron/internal/db"
 	"linkedin-cron/internal/facebook"
+	"linkedin-cron/internal/instagram"
 	"linkedin-cron/internal/linkedin"
 	"linkedin-cron/internal/model"
 )
@@ -26,6 +27,9 @@ type ChannelFormInput struct {
 	FacebookPageAccessToken string
 	FacebookPageID          string
 	FacebookAPIBaseURL      string
+	InstagramAccessToken    string
+	InstagramBusinessID     string
+	InstagramAPIBaseURL     string
 }
 
 type ChannelView struct {
@@ -41,20 +45,25 @@ type ChannelView struct {
 	LinkedInAuthorMasked string
 	FacebookTokenMasked  string
 	FacebookPageIDMasked string
+	InstagramTokenMasked string
+	InstagramBizIDMasked string
 	LinkedInConfigured   bool
 	FacebookConfigured   bool
+	InstagramConfigured  bool
 	LinkedInAPIBaseURL   string
 	FacebookAPIBaseURL   string
+	InstagramAPIBaseURL  string
 }
 
 type ChannelStats struct {
-	Total    int
-	Active   int
-	Error    int
-	Disabled int
-	LinkedIn int
-	Facebook int
-	DryRun   int
+	Total     int
+	Active    int
+	Error     int
+	Disabled  int
+	LinkedIn  int
+	Facebook  int
+	Instagram int
+	DryRun    int
 }
 
 type ChannelsPageData struct {
@@ -75,6 +84,9 @@ type channelPayload struct {
 	FacebookPageAccessToken *string `json:"facebook_page_access_token,omitempty"`
 	FacebookPageID          *string `json:"facebook_page_id,omitempty"`
 	FacebookAPIBaseURL      *string `json:"facebook_api_base_url,omitempty"`
+	InstagramAccessToken    *string `json:"instagram_access_token,omitempty"`
+	InstagramBusinessID     *string `json:"instagram_business_account_id,omitempty"`
+	InstagramAPIBaseURL     *string `json:"instagram_api_base_url,omitempty"`
 }
 
 type channelSecretPreview struct {
@@ -82,6 +94,8 @@ type channelSecretPreview struct {
 	LinkedInAuthorURNMasked   string `json:"linkedin_author_urn_masked"`
 	FacebookTokenMasked       string `json:"facebook_page_access_token_masked"`
 	FacebookPageIDMasked      string `json:"facebook_page_id_masked"`
+	InstagramTokenMasked      string `json:"instagram_access_token_masked"`
+	InstagramBizIDMasked      string `json:"instagram_business_account_id_masked"`
 }
 
 type channelSecretPresence struct {
@@ -89,23 +103,30 @@ type channelSecretPresence struct {
 	LinkedInAuthorURNPresent   bool `json:"linkedin_author_urn_present"`
 	FacebookTokenPresent       bool `json:"facebook_page_access_token_present"`
 	FacebookPageIDPresent      bool `json:"facebook_page_id_present"`
+	InstagramTokenPresent      bool `json:"instagram_access_token_present"`
+	InstagramBizIDPresent      bool `json:"instagram_business_account_id_present"`
 }
 
 type channelResponse struct {
-	ID                 int64                 `json:"id"`
-	Type               string                `json:"type"`
-	DisplayName        string                `json:"display_name"`
-	Status             string                `json:"status"`
-	CreatedAt          string                `json:"created_at"`
-	UpdatedAt          string                `json:"updated_at"`
-	LastTestAt         *string               `json:"last_test_at,omitempty"`
-	LastError          *string               `json:"last_error,omitempty"`
-	LinkedInConfigured bool                  `json:"linkedin_configured"`
-	FacebookConfigured bool                  `json:"facebook_configured"`
-	LinkedInAPIBaseURL string                `json:"linkedin_api_base_url,omitempty"`
-	FacebookAPIBaseURL string                `json:"facebook_api_base_url,omitempty"`
-	SecretPreview      channelSecretPreview  `json:"secret_preview"`
-	SecretPresence     channelSecretPresence `json:"secret_presence"`
+	ID                  int64                 `json:"id"`
+	Type                string                `json:"type"`
+	DisplayName         string                `json:"display_name"`
+	Status              string                `json:"status"`
+	CreatedAt           string                `json:"created_at"`
+	UpdatedAt           string                `json:"updated_at"`
+	LastTestAt          *string               `json:"last_test_at,omitempty"`
+	LastError           *string               `json:"last_error,omitempty"`
+	LinkedInConfigured  bool                  `json:"linkedin_configured"`
+	FacebookConfigured  bool                  `json:"facebook_configured"`
+	InstagramConfigured bool                  `json:"instagram_configured"`
+	SupportsMedia       bool                  `json:"supports_media"`
+	MediaTypes          []string              `json:"media_types,omitempty"`
+	RequiresMedia       bool                  `json:"requires_media"`
+	LinkedInAPIBaseURL  string                `json:"linkedin_api_base_url,omitempty"`
+	FacebookAPIBaseURL  string                `json:"facebook_api_base_url,omitempty"`
+	InstagramAPIBaseURL string                `json:"instagram_api_base_url,omitempty"`
+	SecretPreview       channelSecretPreview  `json:"secret_preview"`
+	SecretPresence      channelSecretPresence `json:"secret_presence"`
 }
 
 func (a *App) Channels(w http.ResponseWriter, r *http.Request) {
@@ -226,6 +247,17 @@ func probeChannel(ctx context.Context, channel model.Channel, logger *slog.Logge
 			derefString(channel.FacebookPageID),
 			logger,
 		).Probe(ctx)
+	case model.ChannelTypeInstagram:
+		baseURL := strings.TrimSpace(derefString(channel.InstagramAPIBaseURL))
+		if baseURL == "" {
+			baseURL = "https://graph.facebook.com/v22.0"
+		}
+		return instagram.NewPublisher(
+			baseURL,
+			derefString(channel.InstagramAccessToken),
+			derefString(channel.InstagramBusinessAccountID),
+			logger,
+		).Probe(ctx)
 	default:
 		return fmt.Errorf("unsupported channel type: %s", channel.Type)
 	}
@@ -331,7 +363,7 @@ func (a *App) APITestChannel(w http.ResponseWriter, r *http.Request) {
 func normalizeChannelTypeParam(raw string) string {
 	trimmed := strings.ToLower(strings.TrimSpace(raw))
 	switch trimmed {
-	case string(model.ChannelTypeLinkedIn), string(model.ChannelTypeFacebook), string(model.ChannelTypeDryRun):
+	case string(model.ChannelTypeLinkedIn), string(model.ChannelTypeFacebook), string(model.ChannelTypeInstagram), string(model.ChannelTypeDryRun):
 		return trimmed
 	default:
 		return string(model.ChannelTypeLinkedIn)
@@ -348,18 +380,24 @@ func parseChannelForm(r *http.Request) (db.ChannelInput, ChannelFormInput, error
 		FacebookPageAccessToken: strings.TrimSpace(r.FormValue("facebook_page_access_token")),
 		FacebookPageID:          strings.TrimSpace(r.FormValue("facebook_page_id")),
 		FacebookAPIBaseURL:      strings.TrimSpace(r.FormValue("facebook_api_base_url")),
+		InstagramAccessToken:    strings.TrimSpace(r.FormValue("instagram_access_token")),
+		InstagramBusinessID:     strings.TrimSpace(r.FormValue("instagram_business_account_id")),
+		InstagramAPIBaseURL:     strings.TrimSpace(r.FormValue("instagram_api_base_url")),
 	}
 
 	channelType := model.ChannelType(form.Type)
 	input := db.ChannelInput{
-		Type:                    channelType,
-		DisplayName:             form.DisplayName,
-		LinkedInAccessToken:     optionalString(form.LinkedInAccessToken),
-		LinkedInAuthorURN:       optionalString(form.LinkedInAuthorURN),
-		LinkedInAPIBaseURL:      optionalString(form.LinkedInAPIBaseURL),
-		FacebookPageAccessToken: optionalString(form.FacebookPageAccessToken),
-		FacebookPageID:          optionalString(form.FacebookPageID),
-		FacebookAPIBaseURL:      optionalString(form.FacebookAPIBaseURL),
+		Type:                       channelType,
+		DisplayName:                form.DisplayName,
+		LinkedInAccessToken:        optionalString(form.LinkedInAccessToken),
+		LinkedInAuthorURN:          optionalString(form.LinkedInAuthorURN),
+		LinkedInAPIBaseURL:         optionalString(form.LinkedInAPIBaseURL),
+		FacebookPageAccessToken:    optionalString(form.FacebookPageAccessToken),
+		FacebookPageID:             optionalString(form.FacebookPageID),
+		FacebookAPIBaseURL:         optionalString(form.FacebookAPIBaseURL),
+		InstagramAccessToken:       optionalString(form.InstagramAccessToken),
+		InstagramBusinessAccountID: optionalString(form.InstagramBusinessID),
+		InstagramAPIBaseURL:        optionalString(form.InstagramAPIBaseURL),
 	}
 
 	if err := model.ValidateChannelInput(channelType, form.DisplayName); err != nil {
@@ -375,14 +413,17 @@ func parseChannelPayload(payload channelPayload) (db.ChannelInput, error) {
 	}
 
 	return db.ChannelInput{
-		Type:                    channelType,
-		DisplayName:             strings.TrimSpace(payload.DisplayName),
-		LinkedInAccessToken:     trimStringPointer(payload.LinkedInAccessToken),
-		LinkedInAuthorURN:       trimStringPointer(payload.LinkedInAuthorURN),
-		LinkedInAPIBaseURL:      trimStringPointer(payload.LinkedInAPIBaseURL),
-		FacebookPageAccessToken: trimStringPointer(payload.FacebookPageAccessToken),
-		FacebookPageID:          trimStringPointer(payload.FacebookPageID),
-		FacebookAPIBaseURL:      trimStringPointer(payload.FacebookAPIBaseURL),
+		Type:                       channelType,
+		DisplayName:                strings.TrimSpace(payload.DisplayName),
+		LinkedInAccessToken:        trimStringPointer(payload.LinkedInAccessToken),
+		LinkedInAuthorURN:          trimStringPointer(payload.LinkedInAuthorURN),
+		LinkedInAPIBaseURL:         trimStringPointer(payload.LinkedInAPIBaseURL),
+		FacebookPageAccessToken:    trimStringPointer(payload.FacebookPageAccessToken),
+		FacebookPageID:             trimStringPointer(payload.FacebookPageID),
+		FacebookAPIBaseURL:         trimStringPointer(payload.FacebookAPIBaseURL),
+		InstagramAccessToken:       trimStringPointer(payload.InstagramAccessToken),
+		InstagramBusinessAccountID: trimStringPointer(payload.InstagramBusinessID),
+		InstagramAPIBaseURL:        trimStringPointer(payload.InstagramAPIBaseURL),
 	}, nil
 }
 
@@ -391,30 +432,42 @@ func mapChannelResponse(channel model.Channel) channelResponse {
 	linkedInAuthor := strings.TrimSpace(derefString(channel.LinkedInAuthorURN))
 	facebookToken := strings.TrimSpace(derefString(channel.FacebookPageAccessToken))
 	facebookPageID := strings.TrimSpace(derefString(channel.FacebookPageID))
+	instagramToken := strings.TrimSpace(derefString(channel.InstagramAccessToken))
+	instagramBusinessID := strings.TrimSpace(derefString(channel.InstagramBusinessAccountID))
+	capabilities := channel.Capabilities()
 
 	response := channelResponse{
-		ID:                 channel.ID,
-		Type:               string(channel.Type),
-		DisplayName:        channel.DisplayName,
-		Status:             channel.Status,
-		CreatedAt:          channel.CreatedAt.UTC().Format(time.RFC3339),
-		UpdatedAt:          channel.UpdatedAt.UTC().Format(time.RFC3339),
-		LastError:          channel.LastError,
-		LinkedInConfigured: linkedInToken != "" && linkedInAuthor != "",
-		FacebookConfigured: facebookToken != "" && facebookPageID != "",
-		LinkedInAPIBaseURL: strings.TrimSpace(derefString(channel.LinkedInAPIBaseURL)),
-		FacebookAPIBaseURL: strings.TrimSpace(derefString(channel.FacebookAPIBaseURL)),
+		ID:                  channel.ID,
+		Type:                string(channel.Type),
+		DisplayName:         channel.DisplayName,
+		Status:              channel.Status,
+		CreatedAt:           channel.CreatedAt.UTC().Format(time.RFC3339),
+		UpdatedAt:           channel.UpdatedAt.UTC().Format(time.RFC3339),
+		LastError:           channel.LastError,
+		LinkedInConfigured:  linkedInToken != "" && linkedInAuthor != "",
+		FacebookConfigured:  facebookToken != "" && facebookPageID != "",
+		InstagramConfigured: instagramToken != "" && instagramBusinessID != "",
+		SupportsMedia:       capabilities.SupportsMedia,
+		MediaTypes:          capabilities.MediaTypes,
+		RequiresMedia:       capabilities.RequiresMedia,
+		LinkedInAPIBaseURL:  strings.TrimSpace(derefString(channel.LinkedInAPIBaseURL)),
+		FacebookAPIBaseURL:  strings.TrimSpace(derefString(channel.FacebookAPIBaseURL)),
+		InstagramAPIBaseURL: strings.TrimSpace(derefString(channel.InstagramAPIBaseURL)),
 		SecretPreview: channelSecretPreview{
 			LinkedInAccessTokenMasked: config.MaskSecret(linkedInToken),
 			LinkedInAuthorURNMasked:   config.MaskSecret(linkedInAuthor),
 			FacebookTokenMasked:       config.MaskSecret(facebookToken),
 			FacebookPageIDMasked:      config.MaskSecret(facebookPageID),
+			InstagramTokenMasked:      config.MaskSecret(instagramToken),
+			InstagramBizIDMasked:      config.MaskSecret(instagramBusinessID),
 		},
 		SecretPresence: channelSecretPresence{
 			LinkedInAccessTokenPresent: linkedInToken != "",
 			LinkedInAuthorURNPresent:   linkedInAuthor != "",
 			FacebookTokenPresent:       facebookToken != "",
 			FacebookPageIDPresent:      facebookPageID != "",
+			InstagramTokenPresent:      instagramToken != "",
+			InstagramBizIDPresent:      instagramBusinessID != "",
 		},
 	}
 	if channel.LastTestAt != nil {
@@ -437,10 +490,14 @@ func toChannelView(channel model.Channel) ChannelView {
 		LinkedInAuthorMasked: config.MaskSecret(derefString(channel.LinkedInAuthorURN)),
 		FacebookTokenMasked:  config.MaskSecret(derefString(channel.FacebookPageAccessToken)),
 		FacebookPageIDMasked: config.MaskSecret(derefString(channel.FacebookPageID)),
+		InstagramTokenMasked: config.MaskSecret(derefString(channel.InstagramAccessToken)),
+		InstagramBizIDMasked: config.MaskSecret(derefString(channel.InstagramBusinessAccountID)),
 		LinkedInConfigured:   strings.TrimSpace(derefString(channel.LinkedInAccessToken)) != "" && strings.TrimSpace(derefString(channel.LinkedInAuthorURN)) != "",
 		FacebookConfigured:   strings.TrimSpace(derefString(channel.FacebookPageAccessToken)) != "" && strings.TrimSpace(derefString(channel.FacebookPageID)) != "",
+		InstagramConfigured:  strings.TrimSpace(derefString(channel.InstagramAccessToken)) != "" && strings.TrimSpace(derefString(channel.InstagramBusinessAccountID)) != "",
 		LinkedInAPIBaseURL:   derefString(channel.LinkedInAPIBaseURL),
 		FacebookAPIBaseURL:   derefString(channel.FacebookAPIBaseURL),
+		InstagramAPIBaseURL:  derefString(channel.InstagramAPIBaseURL),
 	}
 	if channel.LastError != nil {
 		view.LastError = *channel.LastError
@@ -465,6 +522,8 @@ func buildChannelStats(channels []model.Channel) ChannelStats {
 			stats.LinkedIn++
 		case model.ChannelTypeFacebook:
 			stats.Facebook++
+		case model.ChannelTypeInstagram:
+			stats.Instagram++
 		case model.ChannelTypeDryRun:
 			stats.DryRun++
 		}

@@ -1,169 +1,68 @@
-# Phase 1 Backlog (Postiz-parity track)
+# Phase 1 Backlog (Postiz parity: API-first -> GUI)
 
-## Goal
+## Defined scope (for scoring)
 
-Bring the product closer to Postiz by introducing channel management and post-to-channel assignment.
+In scope:
 
-## Sprint A (implemented)
+- Agent-first API for scheduling, channels, retries, and operations.
+- Operator GUI for calendar, channel setup, bulk actions, and settings.
+- Reliability signals needed for day-to-day publishing.
 
-1. **Channel domain + storage**
-   - Added `channels` table
-   - Added `post_channels` table
-   - Added store methods for CRUD/test/assignment
+Out of scope (for this phase):
 
-2. **Web GUI channel management**
-   - Added `/settings/channels`
-   - Added create/test/delete channel flows
+- AI writing/assistant features
+- social inbox / comment management
+- team approval workflows / RBAC
+- billing or paid analytics exports
 
-3. **Channel API endpoints**
-   - `GET /api/v1/channels`
-   - `POST /api/v1/channels`
-   - `DELETE /api/v1/channels/{id}`
-   - `POST /api/v1/channels/{id}/test`
+## Weighted checklist (100 points)
 
-4. **Composer integration**
-   - Added channel checkboxes on post create/edit
-   - Persisted `channel_ids` relations
-   - Exposed `channel_ids` in post API responses
+### API-first checklist (70 points)
 
-## Sprint B (implemented)
+- [x] **8** Auth + API key lifecycle (`Basic`, `X-API-Key`, create/revoke, bot handoff)
+- [x] **10** Post CRUD + schedule/send-now/reschedule/send-and-delete
+- [x] **10** Channel CRUD + test + enable/disable + secret rotation (`keep|replace|clear`)
+- [x] **12** Delivery attempts + proof fields + retry endpoint + channel audit endpoint
+- [x] **6** Bulk API operations with partial-failure envelope (`requested/succeeded/failed/errors`)
+- [x] **8** Scheduling guardrails + per-channel posting rules
+- [x] **6** Idempotency keys on mutating API endpoints (`Idempotency-Key` replay + mismatch conflict)
+- [ ] **6** Pagination/filter/search for `GET /api/v1/posts` and `GET /api/v1/channels`
+- [ ] **8** Publish lifecycle webhooks (delivery events)
+- [ ] **6** OpenAPI contract + stable machine-readable error catalog
 
-1. **Per-channel scheduler execution**
-   - Added `publish_attempts` table
-   - Scheduler processes `(post, channel)` independently
-   - Retry bookkeeping is tracked per channel
-   - Aggregate post status is reconciled from channel outcomes
+**API subtotal:** `60/70`
 
-2. **Channel connection tests (real API probes)**
-   - LinkedIn `/v2/userinfo` probe for token validation
-   - Facebook Page graph probe (`/{page_id}?fields=id,name`)
-   - `/settings/channels/{id}/test` and `/api/v1/channels/{id}/test` run live probe + persist result
+### GUI checklist (30 points)
 
-3. **Channel-level observability**
-   - Scheduler logs include `channel_id`, `channel_type`, and `channel_name`
-   - Channels GUI includes status cards (total/active/error/disabled + type counts)
+- [x] **8** Calendar month/week/list, drag-drop reschedule, send-and-delete actions
+- [x] **7** Channel wizard + edit flow + rules + audit history page
+- [x] **5** Bulk UI with selection memory, confirmation guardrail, retry prefill
+- [x] **5** Login/session flow + settings + API key + bot handoff UX
+- [x] **5** Analytics dashboard in GUI (weekly snapshot + delivery breakdown)
 
-4. **Guardrails and UX polish**
-   - Scheduled posts now require at least one channel (UI + API validation)
-   - Channel create form includes dynamic type-based validation hints
+**GUI subtotal:** `30/30`
 
-## Sprint C (implemented)
+## Score summary
 
-1. **Credential UX hardening (phase 1)**
-   - Soft-disable/enable channel from UI and API
-   - Channel edit workflow in UI (`/settings/channels/{id}/edit`)
-   - API channel update endpoint (`PUT /api/v1/channels/{id}`)
-   - Secret rotation semantics for channel tokens: `keep`, `replace`, `clear`
+- **Current verified score:** `90/100`
+- **Gate target:** `>=80/100`
+- **Gate status:** `met`
 
-2. **History views**
-   - UI: `GET /posts/{id}/history` with status/channel filters
-   - API: `GET /api/v1/posts/{id}/attempts`
+## Execution plan (API-first -> GUI)
 
-3. **Bulk operations**
-   - UI: `GET /posts/bulk`
-   - UI actions: `POST /posts/bulk/channels`, `POST /posts/bulk/send-now`
-   - API actions: `POST /api/v1/posts/bulk/channels`, `POST /api/v1/posts/bulk/send-now`
+### Phase A (P0) — parity gate
 
-4. **Audit + pagination (phase 3)**
-   - Added `channel_audit_events` persistence
-   - Channel updates now write audit records (including actor + metadata)
-   - API: `GET /api/v1/channels/{id}/audit` (paginated)
-   - API: `GET /api/v1/posts/{id}/attempts` now paginated
-   - UI: channel edit page shows audit trail with pagination
-   - UI: post history view supports pagination
+1. ✅ Add idempotency key support for mutating `/api/v1/*` routes.
+2. ✅ Add replay/conflict tests for identical key behavior.
+3. ✅ Recompute score and update docs (`todo.md`, `README.md`, `docs/agents-usage.md`).
 
-## Sprint D (implemented)
+### Phase B (P1) — API parity hardening
 
-1. **Credential UX hardening (phase 1 implemented)**
-   - Added explicit secret masking metadata to channel API responses (`secret_preview`, `secret_presence`)
-   - Added structured audit metadata viewer on `/settings/channels/{id}/edit` (parsed JSON + raw fallback)
+1. Add pagination/filter/search for post and channel list APIs.
+2. Publish OpenAPI spec and error code catalog.
+3. Add outbound webhook events for publish lifecycle.
 
-2. **History UX polish (phase 2 implemented)**
-   - Added date-range filtering (`attempted_from`, `attempted_to`) for `/api/v1/posts/{id}/attempts`
-   - Added date-range controls on `/posts/{id}/history`
+### Phase C (P2) — GUI parity follow-through
 
-3. **Bulk UX polish (phase 3 implemented)**
-   - Added selection memory in `/posts/bulk` using lightweight browser `localStorage`
-   - Added explicit bulk confirmation guardrail (client + server)
-   - Added partial-failure retry helper with failed-post preselection on redirect
-
-4. **Bulk UX polish (phase 4 implemented)**
-   - Added server-side bulk filters (`status`, `q`) on `/posts/bulk`
-   - Preserved filter context across bulk action redirects and retries
-
-
-## Sprint E (implemented)
-
-1. **Calendar UX upgrade**
-   - Added `view=list` calendar mode with ready-date summary + full queue cards
-   - Added compact card labels (`LINKEDIN POST`, `FACEBOOK POST`, `MULTI CHANNEL POST`)
-   - Added card actions: `view post`, `edit post`, `send and delete`
-
-2. **Drag & drop rescheduling**
-   - Added week time-grid UI (vertical hour rows)
-   - Added drag-drop interaction in month and week views
-   - Added `POST /posts/{id}/reschedule` endpoint
-
-3. **Post detail flow**
-   - Added `GET /posts/{id}` post detail page
-   - Added `POST /posts/{id}/send-and-delete` convenience action
-
-4. **Settings bot handoff UX**
-   - Added one-click bot handoff action in `/settings`
-   - Added `POST /settings/api-keys/bot-handoff` route
-   - Generates API key + copyable instruction payload for agents
-
-5. **Channel setup wizard polish**
-   - Reworked `/settings/channels` into a guided 3-step channel setup wizard
-   - Added platform-specific hints and dynamic form visibility for LinkedIn/Facebook/Dry-run
-
-
-## Sprint F (implemented)
-
-1. **Friendly login flow for public URL deployments**
-   - Added `/login` username/password form
-   - Added signed HttpOnly session cookie auth for UI routes
-   - Added `/logout` endpoint and navigation links
-   - Preserved API auth model (Basic + API keys)
-
-2. **Session security hardening**
-   - Session cookies use `HttpOnly`, `SameSite=Lax`
-   - `Secure` cookie flag controlled by `APP_SESSION_SECURE`
-   - Session tokens are HMAC-signed and time-bounded
-
-## Sprint G (implemented)
-
-1. **Agent API ergonomics**
-   - Added `POST /api/v1/posts/{id}/send-and-delete`
-   - Added `POST /api/v1/posts/{id}/reschedule`
-   - Added `POST /api/v1/settings/bot-handoff`
-
-2. **Public UX continuity improvements**
-   - Made static assets public so `/login` is fully styled without auth
-   - Added logout affordance in UI navigation
-   - Expanded docs + tests for new agent/UI flows
-
-
-## Sprint H (implemented)
-
-1. **Data-first container model**
-   - Moved runtime persistence model to `/data`
-   - Added `/data/config.json` bootstrap/load support in app config
-   - Kept SQLite and all user-generated state under `/data`
-
-2. **Single-container Docker UX**
-   - Added container entrypoint wrapper running server + minute scheduler loop
-   - Simplified compose to one service with only port + `/data` bind mount
-   - Added `docker-compose.example.yml` with host path placeholder
-
-3. **Deployment consistency**
-   - Updated docs and status views to expose `data_dir` + `config_path`
-   - Maintained API/UI behavior while removing docker env sprawl
-
-## Sprint I (Agent MVP hardening)
-
-- Added proof-of-post metadata to attempts: `permalink`, `error_category`, `screenshot_url`.
-- Added API endpoints for attempt screenshot attachment and one-click retry.
-- Added scheduling guardrail checks (duplicate slot + tight spacing warnings).
-- Added per-channel posting rules (`max_text_length`, `max_hashtags`, `required_phrase`).
-- Added weekly snapshot API endpoint for planning + delivery counters.
+1. Add webhook delivery health/status panel in Settings.
+2. Add richer analytics slices (date/channel filters) without increasing frontend weight.

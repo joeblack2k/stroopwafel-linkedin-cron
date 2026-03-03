@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{.Title}} · linkedin-cron</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <script src="/static/app.js" defer></script>
+</head>
+<body>
+  <header class="topbar">
+    <h1>linkedin-cron</h1>
+    <nav>
+      <a href="/calendar">Calendar</a>
+      <a href="/posts/new">New Post</a>
+      <a href="/posts/bulk">Bulk</a>
+      <a href="/analytics">Analytics</a>
+      <a href="/settings/channels">Channels</a>
+      <a href="/settings">Settings</a>
+      <a href="/logout">Logout</a>
+    </nav>
+  </header>
+
+  <main class="container" data-analytics-root>
+    <section class="page-head">
+      <div>
+        <h2>Analytics Snapshot</h2>
+        <p class="muted">Cards + tables are loaded from `/analytics/data`.</p>
+      </div>
+      <div class="button-row wrap">
+        <label class="analytics-date">
+          Week start
+          <input type="date" id="analytics-week-start" value="{{.WeekStart}}">
+        </label>
+        <button type="button" class="ghost" data-analytics-refresh>Refresh</button>
+      </div>
+    </section>
+
+    <div id="analytics-error" class="notice error analytics-hidden"></div>
+
+    <section class="stats-grid analytics-grid">
+      <article class="stat-card">
+        <h3>Planned posts</h3>
+        <p id="analytics-planned">-</p>
+      </article>
+      <article class="stat-card ok">
+        <h3>Published attempts</h3>
+        <p id="analytics-published">-</p>
+      </article>
+      <article class="stat-card warn">
+        <h3>Failed attempts</h3>
+        <p id="analytics-failed">-</p>
+      </article>
+      <article class="stat-card">
+        <h3>Retry attempts</h3>
+        <p id="analytics-retries">-</p>
+      </article>
+    </section>
+
+    <section class="panel">
+      <div class="section-head">
+        <h3>Top post</h3>
+        <p id="analytics-range" class="muted">Window: loading...</p>
+      </div>
+      <div id="analytics-top-post" class="analytics-top-post muted">Loading top post...</div>
+      <p id="analytics-generated" class="muted analytics-generated"></p>
+    </section>
+
+    <section class="actions">
+      <h3>Channel delivery table</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>Channel</th>
+            <th>Platform</th>
+            <th>Status</th>
+            <th>Planned</th>
+            <th>Sent</th>
+            <th>Failed</th>
+          </tr>
+        </thead>
+        <tbody id="analytics-channel-rows">
+          <tr>
+            <td colspan="6" class="muted">Loading channel analytics...</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section class="actions">
+      <h3>Upcoming posts (selected week)</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>Scheduled</th>
+            <th>Status</th>
+            <th>Channels</th>
+            <th>Preview</th>
+          </tr>
+        </thead>
+        <tbody id="analytics-post-rows">
+          <tr>
+            <td colspan="5" class="muted">Loading posts...</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+  </main>
+</body>
+</html>

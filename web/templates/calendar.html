@@ -6,169 +6,293 @@
   <title>{{.Title}} · linkedin-cron</title>
   <link rel="stylesheet" href="/static/style.css">
   <script src="https://unpkg.com/htmx.org@1.9.12" defer></script>
+  <script src="/static/app.js" defer></script>
 </head>
 <body hx-boost="true">
   <header class="topbar">
     <h1>linkedin-cron</h1>
     <nav>
       <a href="/calendar">Calendar</a>
-      <a href="/posts/new?return_to={{printf "/calendar?view=%s&date=%s" .View (.CurrentDate.Format "2006-01-02")}}">New Post</a>
+      <a href="/calendar?view={{.View}}&date={{.CurrentDate.Format "2006-01-02"}}" data-open-post-modal="true" hx-boost="false">+ New Post</a>
       <a href="/posts/bulk">Bulk</a>
+      <a href="/analytics">Analytics</a>
       <a href="/settings/channels">Channels</a>
       <a href="/settings">Settings</a>
-          <a href="/logout">Logout</a>
-</nav>
+      <a href="/logout">Logout</a>
+    </nav>
   </header>
 
   <main class="container">
-    <section class="page-head">
-      <div>
-        <h2>Publishing Calendar</h2>
-        <p class="muted">Sleepy-proof mode: drag cards to another day/time. Use “view post” for full text.</p>
-      </div>
-      <div class="button-row wrap">
-        <a class="button" href="/calendar?view={{.View}}&date={{.PrevDate}}">← Prev</a>
-        <a class="button" href="/calendar?view={{.View}}&date={{.NextDate}}">Next →</a>
-      </div>
-    </section>
-
-    <section class="toolbar">
-      <div class="button-row wrap">
-        <a class="button {{if eq .View "month"}}active{{end}}" href="/calendar?view=month&date={{.CurrentDate.Format "2006-01-02"}}">Month</a>
-        <a class="button {{if eq .View "week"}}active{{end}}" href="/calendar?view=week&date={{.CurrentDate.Format "2006-01-02"}}">Week (time-grid)</a>
-        <a class="button {{if eq .View "list"}}active{{end}}" href="/calendar?view=list&date={{.CurrentDate.Format "2006-01-02"}}">List mode</a>
-      </div>
-      <div class="button-row wrap">
-        <a class="button" href="/posts/new?return_to={{printf "/calendar?view=%s&date=%s" .View (.CurrentDate.Format "2006-01-02")}}">+ New Post</a>
-      </div>
-    </section>
-
-    {{if .Message}}<div class="notice success">{{.Message}}</div>{{end}}
-    {{if .Error}}<div class="notice error">{{.Error}}</div>{{end}}
-
-    {{if eq .View "list"}}
-      <section class="panel">
-        <h3>Dates with scheduled posts</h3>
-        {{if .ReadyDates}}
-          <ul class="ready-dates">
-            {{range .ReadyDates}}
-              <li>{{.Format "Mon 02 Jan 2006"}}</li>
-            {{end}}
-          </ul>
-        {{else}}
-          <p class="muted">No scheduled dates yet.</p>
-        {{end}}
-      </section>
-
-      <section class="panel">
-        <h3>All posts</h3>
-        {{if .ListPosts}}
-          <ul class="list-posts">
-            {{range .ListPosts}}
-              <li class="post-card {{.Tone}}" draggable="{{if ne .Status "sent"}}true{{else}}false{{end}}" data-post-id="{{.ID}}" data-post-time="{{.TimeLocal}}">
-                <div class="post-card-top">
-                  <strong>{{.Label}}</strong>
-                  <span class="muted">{{if .ScheduledAt}}{{fmtTime .ScheduledAt $.Location}}{{else}}No datetime{{end}}</span>
-                </div>
-                <p class="post-preview">{{.Preview}}</p>
-                <div class="action-row">
-                  <a href="/posts/{{.ID}}?return_to={{printf "/calendar?view=list&date=%s" ($.CurrentDate.Format "2006-01-02")}}">view post</a>
-                  <a href="/posts/{{.ID}}/edit?return_to={{printf "/calendar?view=list&date=%s" ($.CurrentDate.Format "2006-01-02")}}">edit post</a>
-                  {{if ne .Status "sent"}}
-                    <form method="post" action="/posts/{{.ID}}/send-and-delete" class="inline">
-                      <input type="hidden" name="return_to" value="/calendar?view=list&date={{$.CurrentDate.Format "2006-01-02"}}">
-                      <button type="submit">send and delete</button>
-                    </form>
-                  {{end}}
-                </div>
-              </li>
-            {{end}}
-          </ul>
-        {{else}}
-          <p class="muted">No posts yet. Create one to start planning.</p>
-        {{end}}
-      </section>
-    {{else if eq .View "week"}}
-      <section class="week-table-wrap">
-        <table class="week-table">
-          <thead>
-            <tr>
-              <th class="hour-col">Time</th>
-              {{range .WeekDays}}
-                <th>{{.Date.Format "Mon 02 Jan"}}</th>
-              {{end}}
-            </tr>
-          </thead>
-          <tbody>
-            {{range $row := .WeekRows}}
-              <tr>
-                <th class="hour-col">{{$row.HourLabel}}</th>
-                {{range $day := $row.Days}}
-                  <td class="week-cell" data-drop-date="{{$day.Date.Format "2006-01-02"}}" data-drop-hour="{{$row.Hour}}">
-                    {{if $day.Posts}}
-                      {{range $card := $day.Posts}}
-                        <article class="post-card {{$card.Tone}}" draggable="{{if ne $card.Status "sent"}}true{{else}}false{{end}}" data-post-id="{{$card.ID}}" data-post-time="{{$card.TimeLocal}}">
-                          <div class="post-card-top">
-                            <strong>{{$card.Label}}</strong>
-                            <span class="muted">{{$card.TimeLocal}}</span>
-                          </div>
-                          <div class="action-row">
-                            <a href="/posts/{{$card.ID}}?return_to={{printf "/calendar?view=week&date=%s" ($.CurrentDate.Format "2006-01-02")}}">view post</a>
-                            <a href="/posts/{{$card.ID}}/edit?return_to={{printf "/calendar?view=week&date=%s" ($.CurrentDate.Format "2006-01-02")}}">edit post</a>
-                            {{if ne $card.Status "sent"}}
-                              <form method="post" action="/posts/{{$card.ID}}/send-and-delete" class="inline">
-                                <input type="hidden" name="return_to" value="/calendar?view=week&date={{$.CurrentDate.Format "2006-01-02"}}">
-                                <button type="submit">send and delete</button>
-                              </form>
-                            {{end}}
-                          </div>
-                        </article>
-                      {{end}}
+    <section class="calendar-layout">
+      <aside class="calendar-sidebar">
+        <section class="panel sidebar-panel">
+          <h3>Workspace Channels</h3>
+          <p class="muted">Postiz-like lane: profiles, badges, and health.</p>
+          {{if .Channels}}
+            <ul class="sidebar-channel-list">
+              {{range .Channels}}
+                <li class="sidebar-channel-item">
+                  <span class="avatar-circle">
+                    {{if .AvatarURL}}
+                      <img src="{{.AvatarURL}}" alt="{{.DisplayName}} avatar" loading="lazy">
                     {{else}}
-                      <span class="drop-hint muted">drop here</span>
+                      {{.AvatarText}}
                     {{end}}
-                  </td>
-                {{end}}
-              </tr>
-            {{end}}
-          </tbody>
-        </table>
-      </section>
-    {{else}}
-      <section class="month-grid" role="grid">
-        {{range .Days}}
-          <article class="day-cell {{if not .InMonth}}outside{{end}}" data-drop-date="{{.Date.Format "2006-01-02"}}">
-            <div class="day-head">
-              <h3>{{.Date.Format "Mon 02"}}</h3>
-              <a class="mini-link" href="/posts/new?return_to={{printf "/calendar?view=month&date=%s" ($.CurrentDate.Format "2006-01-02")}}">+ add</a>
-            </div>
-            {{if .Posts}}
-              {{range .Posts}}
-                <article class="post-card {{.Tone}}" draggable="{{if ne .Status "sent"}}true{{else}}false{{end}}" data-post-id="{{.ID}}" data-post-time="{{.TimeLocal}}">
-                  <div class="post-card-top">
-                    <strong>{{.Label}}</strong>
-                    <span class="muted">{{.TimeLocal}}</span>
-                  </div>
-                  <div class="action-row compact">
-                    <a href="/posts/{{.ID}}?return_to={{printf "/calendar?view=month&date=%s" ($.CurrentDate.Format "2006-01-02")}}">view post</a>
-                    <a href="/posts/{{.ID}}/edit?return_to={{printf "/calendar?view=month&date=%s" ($.CurrentDate.Format "2006-01-02")}}">edit post</a>
-                    {{if ne .Status "sent"}}
-                      <form method="post" action="/posts/{{.ID}}/send-and-delete" class="inline">
-                        <input type="hidden" name="return_to" value="/calendar?view=month&date={{$.CurrentDate.Format "2006-01-02"}}">
-                        <button type="submit">send and delete</button>
-                      </form>
-                    {{end}}
-                  </div>
-                </article>
+                  </span>
+                  <span class="sidebar-channel-meta">
+                    <strong>{{.DisplayName}}</strong>
+                    <span class="muted">{{.PlatformName}} · {{.Status}}</span>
+                  </span>
+                  <span class="platform-badge {{.PlatformClass}}">{{.PlatformBadge}}</span>
+                </li>
               {{end}}
+            </ul>
+          {{else}}
+            <p class="muted">No channels yet. Add one in Settings → Channels.</p>
+          {{end}}
+          <div class="button-row wrap">
+            <a class="button ghost" href="/settings/channels">Manage channels</a>
+            <a class="button ghost" href="/analytics">Open analytics</a>
+          </div>
+        </section>
+
+        <section class="panel sidebar-panel">
+          <h3>Quick Post</h3>
+          <p class="muted">Fast compose modal with classic form submit fallback.</p>
+          <a class="button" href="/posts/new?return_to={{.ReturnTo}}" data-open-post-modal="true" hx-boost="false">+ New Post</a>
+        </section>
+      </aside>
+
+      <div class="calendar-main">
+        <section class="page-head">
+          <div>
+            <h2>Publishing Calendar</h2>
+            <p class="muted">Sleepy-proof mode: drag cards to another day/time. Use “view post” for full text.</p>
+          </div>
+          <div class="button-row wrap">
+            <a class="button" href="/calendar?view={{.View}}&date={{.PrevDate}}">← Prev</a>
+            <a class="button" href="/calendar?view={{.View}}&date={{.NextDate}}">Next →</a>
+          </div>
+        </section>
+
+        <section class="toolbar">
+          <div class="button-row wrap">
+            <a class="button {{if eq .View "month"}}active{{end}}" href="/calendar?view=month&date={{.CurrentDate.Format "2006-01-02"}}">Month</a>
+            <a class="button {{if eq .View "week"}}active{{end}}" href="/calendar?view=week&date={{.CurrentDate.Format "2006-01-02"}}">Week (time-grid)</a>
+            <a class="button {{if eq .View "list"}}active{{end}}" href="/calendar?view=list&date={{.CurrentDate.Format "2006-01-02"}}">List mode</a>
+          </div>
+          <div class="button-row wrap">
+            <a class="button" href="/posts/new?return_to={{.ReturnTo}}" data-open-post-modal="true" hx-boost="false">+ New Post</a>
+          </div>
+        </section>
+
+        {{if .Message}}<div class="notice success">{{.Message}}</div>{{end}}
+        {{if .Error}}<div class="notice error">{{.Error}}</div>{{end}}
+
+        {{if eq .View "list"}}
+          <section class="panel">
+            <h3>Dates with scheduled posts</h3>
+            {{if .ReadyDates}}
+              <ul class="ready-dates">
+                {{range .ReadyDates}}
+                  <li>{{.Format "Mon 02 Jan 2006"}}</li>
+                {{end}}
+              </ul>
             {{else}}
-              <p class="muted">No posts</p>
+              <p class="muted">No scheduled dates yet.</p>
             {{end}}
-          </article>
+          </section>
+
+          <section class="panel">
+            <h3>All posts</h3>
+            {{if .ListPosts}}
+              <ul class="list-posts">
+                {{range .ListPosts}}
+                  <li class="post-card {{.Tone}}" draggable="{{if ne .Status "sent"}}true{{else}}false{{end}}" data-post-id="{{.ID}}" data-post-time="{{.TimeLocal}}">
+                    <div class="post-card-top">
+                      <strong>{{.Label}}</strong>
+                      <span class="muted">{{if .ScheduledAt}}{{fmtTime .ScheduledAt $.Location}}{{else}}No datetime{{end}}</span>
+                    </div>
+                    <p class="post-preview">{{.Preview}}</p>
+                    <div class="action-row">
+                      <a href="/posts/{{.ID}}?return_to={{printf "/calendar?view=list&date=%s" ($.CurrentDate.Format "2006-01-02")}}">view post</a>
+                      <a href="/posts/{{.ID}}/edit?return_to={{printf "/calendar?view=list&date=%s" ($.CurrentDate.Format "2006-01-02")}}">edit post</a>
+                      {{if ne .Status "sent"}}
+                        <form method="post" action="/posts/{{.ID}}/send-and-delete" class="inline" hx-boost="false">
+                          <input type="hidden" name="return_to" value="/calendar?view=list&date={{$.CurrentDate.Format "2006-01-02"}}">
+                          <button type="submit">send and delete</button>
+                        </form>
+                      {{end}}
+                    </div>
+                  </li>
+                {{end}}
+              </ul>
+            {{else}}
+              <p class="muted">No posts yet. Create one to start planning.</p>
+            {{end}}
+          </section>
+        {{else if eq .View "week"}}
+          <section class="week-table-wrap">
+            <table class="week-table">
+              <thead>
+                <tr>
+                  <th class="hour-col">Time</th>
+                  {{range .WeekDays}}
+                    <th>{{.Date.Format "Mon 02 Jan"}}</th>
+                  {{end}}
+                </tr>
+              </thead>
+              <tbody>
+                {{range $row := .WeekRows}}
+                  <tr>
+                    <th class="hour-col">{{$row.HourLabel}}</th>
+                    {{range $day := $row.Days}}
+                      <td class="week-cell" data-drop-date="{{$day.Date.Format "2006-01-02"}}" data-drop-hour="{{$row.Hour}}">
+                        {{if $day.Posts}}
+                          {{range $card := $day.Posts}}
+                            <article class="post-card {{$card.Tone}}" draggable="{{if ne $card.Status "sent"}}true{{else}}false{{end}}" data-post-id="{{$card.ID}}" data-post-time="{{$card.TimeLocal}}">
+                              <div class="post-card-top">
+                                <strong>{{$card.Label}}</strong>
+                                <span class="muted">{{$card.TimeLocal}}</span>
+                              </div>
+                              <div class="action-row">
+                                <a href="/posts/{{$card.ID}}?return_to={{printf "/calendar?view=week&date=%s" ($.CurrentDate.Format "2006-01-02")}}">view post</a>
+                                <a href="/posts/{{$card.ID}}/edit?return_to={{printf "/calendar?view=week&date=%s" ($.CurrentDate.Format "2006-01-02")}}">edit post</a>
+                                {{if ne $card.Status "sent"}}
+                                  <form method="post" action="/posts/{{$card.ID}}/send-and-delete" class="inline" hx-boost="false">
+                                    <input type="hidden" name="return_to" value="/calendar?view=week&date={{$.CurrentDate.Format "2006-01-02"}}">
+                                    <button type="submit">send and delete</button>
+                                  </form>
+                                {{end}}
+                              </div>
+                            </article>
+                          {{end}}
+                        {{else}}
+                          <span class="drop-hint muted">drop here</span>
+                        {{end}}
+                      </td>
+                    {{end}}
+                  </tr>
+                {{end}}
+              </tbody>
+            </table>
+          </section>
+        {{else}}
+          <section class="month-grid" role="grid">
+            {{range .Days}}
+              <article class="day-cell {{if not .InMonth}}outside{{end}}" data-drop-date="{{.Date.Format "2006-01-02"}}">
+                <div class="day-head">
+                  <h3>{{.Date.Format "Mon 02"}}</h3>
+                  <a class="mini-link" href="/posts/new?return_to={{printf "/calendar?view=month&date=%s" ($.CurrentDate.Format "2006-01-02")}}" data-open-post-modal="true" hx-boost="false">+ add</a>
+                </div>
+                {{if .Posts}}
+                  {{range .Posts}}
+                    <article class="post-card {{.Tone}}" draggable="{{if ne .Status "sent"}}true{{else}}false{{end}}" data-post-id="{{.ID}}" data-post-time="{{.TimeLocal}}">
+                      <div class="post-card-top">
+                        <strong>{{.Label}}</strong>
+                        <span class="muted">{{.TimeLocal}}</span>
+                      </div>
+                      <div class="action-row compact">
+                        <a href="/posts/{{.ID}}?return_to={{printf "/calendar?view=month&date=%s" ($.CurrentDate.Format "2006-01-02")}}">view post</a>
+                        <a href="/posts/{{.ID}}/edit?return_to={{printf "/calendar?view=month&date=%s" ($.CurrentDate.Format "2006-01-02")}}">edit post</a>
+                        {{if ne .Status "sent"}}
+                          <form method="post" action="/posts/{{.ID}}/send-and-delete" class="inline" hx-boost="false">
+                            <input type="hidden" name="return_to" value="/calendar?view=month&date={{$.CurrentDate.Format "2006-01-02"}}">
+                            <button type="submit">send and delete</button>
+                          </form>
+                        {{end}}
+                      </div>
+                    </article>
+                  {{end}}
+                {{else}}
+                  <p class="muted">No posts</p>
+                {{end}}
+              </article>
+            {{end}}
+          </section>
         {{end}}
-      </section>
-    {{end}}
+      </div>
+    </section>
   </main>
+
+  <section class="modal-overlay" data-post-modal hidden aria-hidden="true">
+    <div class="modal-dialog" role="dialog" aria-modal="true" aria-label="New Post">
+      <div class="modal-head">
+        <h3>Create New Post</h3>
+        <button type="button" class="ghost" data-close-post-modal>Close</button>
+      </div>
+
+      <form method="post" action="/posts" class="stack" hx-boost="false" data-media-group>
+        <input type="hidden" name="return_to" value="{{.ReturnTo}}">
+
+        <label>
+          Scheduled at
+          <input type="datetime-local" name="scheduled_at">
+        </label>
+
+        <label>
+          Text
+          <textarea name="text" rows="6" required placeholder="Write your post..."></textarea>
+        </label>
+
+        <label>
+          Status
+          <select name="status" required>
+            <option value="draft">draft</option>
+            <option value="scheduled">scheduled</option>
+          </select>
+        </label>
+
+        <fieldset class="media-fieldset">
+          <legend>Media</legend>
+          <label>
+            Media type
+            <select name="media_type" data-media-type>
+              <option value="auto">Auto detect</option>
+              <option value="image">Image</option>
+              <option value="video">Video</option>
+              <option value="link">Link</option>
+            </select>
+          </label>
+          <label>
+            Media URL
+            <input type="url" name="media_url" data-media-url placeholder="https://example.com/media.jpg">
+          </label>
+          <label>
+            Upload media file
+            <input type="file" name="media_file" data-media-file accept="image/*,video/*">
+          </label>
+          <div class="button-row wrap">
+            <button type="button" class="ghost" data-media-upload-button>Upload and use media</button>
+            <span class="muted" data-media-upload-status></span>
+          </div>
+          <p class="muted" data-media-hint>Pick a type to get the best URL format hint.</p>
+        </fieldset>
+
+        <fieldset>
+          <legend>Channels</legend>
+          <p class="muted">Scheduled posts require at least one channel.</p>
+          {{if .Channels}}
+            <div class="modal-channel-grid">
+              {{range .Channels}}
+                <label class="checkbox-row">
+                  <input type="checkbox" name="channel_ids" value="{{.ID}}">
+                  <span>{{.DisplayName}} ({{.PlatformName}})</span>
+                </label>
+              {{end}}
+            </div>
+          {{else}}
+            <p class="muted">No channels configured yet. Add one via <a href="/settings/channels">Settings → Channels</a>.</p>
+          {{end}}
+        </fieldset>
+
+        <div class="button-row wrap">
+          <button type="submit">Create Post</button>
+          <a class="button ghost" href="/posts/new?return_to={{.ReturnTo}}">Open full page form</a>
+        </div>
+      </form>
+    </div>
+  </section>
 
   <script>
     (function () {

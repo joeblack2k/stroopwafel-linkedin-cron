@@ -1,12 +1,20 @@
 # stroopwafel-linkedin-cron
 
-Lightweight Go monolith to draft, schedule, and publish social posts (LinkedIn + Facebook Pages) with:
+Lightweight Go monolith to draft, schedule, and publish social posts (LinkedIn + Facebook Pages + Instagram Business) with:
 
 - server-rendered HTML UI (`net/http` + `html/template` + HTMX)
 - authenticated JSON API for agents
 - SQLite storage with handwritten SQL
 - pluggable publisher (default: dry-run)
 - built-in minute scheduler (inside the container runtime wrapper)
+
+## Postiz Parity Snapshot (API-first)
+
+- Scope is tracked in `docs/phase1-backlog.md` (API-first, then GUI).
+- Current verified score: **90/100** for defined parity scope.
+- The `>=80` gate is met for this scope.
+- Active implementation checklist: `todo.md`.
+- Agent-facing parity runbook: `docs/agents-usage.md`.
 
 ## Core Architecture
 
@@ -16,6 +24,7 @@ Lightweight Go monolith to draft, schedule, and publish social posts (LinkedIn +
 - `internal/scheduler`: send/retry orchestration
 - `internal/linkedin`: LinkedIn publisher
 - `internal/facebook`: Facebook Page publisher
+- `internal/instagram`: Instagram publisher
 
 ## Data-first Docker Model (important)
 
@@ -143,6 +152,8 @@ For local runs, `.env` values bootstrap config if `APP_CONFIG_PATH` does not exi
 - Basic Auth, or
 - API key (`X-API-Key` or `Authorization: Bearer ...`)
 
+Mutating API endpoints (`POST|PUT|DELETE /api/v1/*`) also support `Idempotency-Key`.
+
 API keys are stored hashed in SQLite.
 
 ## Agent-Focused MVP Additions
@@ -152,6 +163,9 @@ API keys are stored hashed in SQLite.
 - Channel rules are configurable per channel: `max_text_length`, `max_hashtags`, `required_phrase`.
 - Failsafe error categories are persisted for attempts (`auth_expired`, `scope_missing`, `rate_limited`, etc.) with one-click retry endpoints.
 - Weekly snapshot endpoint provides planning and delivery counters plus top-post selection.
+- Channel capabilities are exposed via API (`supports_media`, `media_types`, `requires_media`) and enforced on create/update/reschedule.
+- Media uploads are supported via UI/API upload endpoints and persisted under `/data/uploads` (served at `/media/*`).
+- Instagram channels are first-class with dedicated credentials and publisher implementation.
 
 ## UI Endpoints
 
@@ -161,8 +175,11 @@ API keys are stored hashed in SQLite.
 - `POST /logout`
 - `GET /healthz`
 - `GET /calendar?view=month|week|list&date=YYYY-MM-DD`
+- `GET /analytics`
+- `GET /analytics/data`
 - `GET /posts/new`
 - `POST /posts`
+- `POST /media/upload`
 - `GET /posts/{id}`
 - `GET /posts/{id}/edit`
 - `POST /posts/{id}`
@@ -194,6 +211,7 @@ API keys are stored hashed in SQLite.
 - `GET /api/v1/posts`
 - `GET /api/v1/posts/{id}`
 - `POST /api/v1/posts`
+- `POST /api/v1/media/upload`
 - `POST /api/v1/posts/guardrails`
 - `PUT /api/v1/posts/{id}`
 - `DELETE /api/v1/posts/{id}`
@@ -206,6 +224,7 @@ API keys are stored hashed in SQLite.
 - `POST /api/v1/posts/bulk/send-now`
 - `POST /api/v1/posts/bulk/channels`
 - `GET /api/v1/settings/status`
+- `GET /api/v1/analytics/overview`
 - `GET /api/v1/analytics/weekly-snapshot`
 - `POST /api/v1/settings/bot-handoff`
 - `GET /api/v1/channels`

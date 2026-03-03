@@ -59,6 +59,51 @@ type weeklySnapshotResponse struct {
 	Interaction       map[string]any `json:"interaction"`
 }
 
+type analyticsOverviewChannelResponse struct {
+	ChannelID   int64  `json:"channel_id"`
+	ChannelType string `json:"channel_type"`
+	DisplayName string `json:"display_name"`
+	SentCount   int    `json:"sent_count"`
+	FailedCount int    `json:"failed_count"`
+	RetryCount  int    `json:"retry_count"`
+}
+
+type analyticsOverviewResponse struct {
+	TotalPosts  int                                `json:"total_posts"`
+	SentCount   int                                `json:"sent_count"`
+	FailedCount int                                `json:"failed_count"`
+	RetryCount  int                                `json:"retry_count"`
+	Channels    []analyticsOverviewChannelResponse `json:"channels"`
+}
+
+func (a *App) APIAnalyticsOverview(w http.ResponseWriter, r *http.Request) {
+	overview, err := a.Store.GetAnalyticsOverview(r.Context())
+	if err != nil {
+		writeAPIError(w, http.StatusInternalServerError, "failed to load analytics overview")
+		return
+	}
+
+	channels := make([]analyticsOverviewChannelResponse, 0, len(overview.Channels))
+	for _, channel := range overview.Channels {
+		channels = append(channels, analyticsOverviewChannelResponse{
+			ChannelID:   channel.ChannelID,
+			ChannelType: string(channel.ChannelType),
+			DisplayName: channel.DisplayName,
+			SentCount:   channel.SentCount,
+			FailedCount: channel.FailedCount,
+			RetryCount:  channel.RetryCount,
+		})
+	}
+
+	writeJSON(w, http.StatusOK, analyticsOverviewResponse{
+		TotalPosts:  overview.TotalPosts,
+		SentCount:   overview.SentCount,
+		FailedCount: overview.FailedCount,
+		RetryCount:  overview.RetryCount,
+		Channels:    channels,
+	})
+}
+
 func (a *App) APICheckPostGuardrails(w http.ResponseWriter, r *http.Request) {
 	var payload guardrailsPayload
 	if err := readJSONBody(r, &payload); err != nil {
@@ -294,6 +339,52 @@ func (a *App) validatePostAgainstChannelRules(ctx context.Context, text string, 
 	if len(violations) > 0 {
 		return fmt.Errorf("channel rule violation: %s", strings.Join(violations, "; "))
 	}
+	return nil
+}
+
+func (a *App) validatePostAgainstChannelCapabilities(ctx context.Context, mediaType *string, mediaURL *string, channelIDs []int64) error {
+	uniqueChannelIDs := dedupeChannelIDs(channelIDs)
+	if len(uniqueChannelIDs) == 0 {
+		return nil
+	}
+
+	channels, err := a.Store.ListChannelsByIDs(ctx, uniqueChannelIDs)
+	if err != nil {
+		return fmt.Errorf("failed to load channels")
+	}
+	if len(channels) != len(uniqueChannelIDs) {
+		return fmt.Errorf("one or more channels were not found")
+	}
+
+	hasMedia := strings.TrimSpace(derefString(mediaURL)) != ""
+	effectiveMediaType := model.NormalizeMediaType(mediaType)
+	if hasMedia && effectiveMediaType == nil {
+		effectiveMediaType = model.InferMediaTypeFromURL(derefString(mediaURL))
+	}
+
+	violations := make([]string, 0)
+	for _, channel := range channels {
+		capabilities := channel.Capabilities()
+		if capabilities.RequiresMedia && !hasMedia {
+			violations = append(violations, fmt.Sprintf("%s requires media", channel.DisplayName))
+			continue
+		}
+		if !hasMedia {
+			continue
+		}
+		if !capabilities.SupportsMedia {
+			violations = append(violations, fmt.Sprintf("%s does not support media", channel.DisplayName))
+			continue
+		}
+		if effectiveMediaType != nil && !capabilities.SupportsMediaType(*effectiveMediaType) {
+			violations = append(violations, fmt.Sprintf("%s does not support media_type=%s", channel.DisplayName, *effectiveMediaType))
+		}
+	}
+
+	if len(violations) > 0 {
+		return fmt.Errorf("channel capability violation: %s", strings.Join(violations, "; "))
+	}
+
 	return nil
 }
 

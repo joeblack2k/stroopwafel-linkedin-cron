@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>{{.Title}} · linkedin-cron</title>
   <link rel="stylesheet" href="/static/style.css">
+  <script src="/static/app.js" defer></script>
 </head>
 <body>
   <header class="topbar">
@@ -13,15 +14,16 @@
       <a href="/calendar">Calendar</a>
       <a href="/posts/new">New Post</a>
       <a href="/posts/bulk">Bulk</a>
+      <a href="/analytics">Analytics</a>
       <a href="/settings/channels">Channels</a>
       <a href="/settings">Settings</a>
-          <a href="/logout">Logout</a>
-</nav>
+      <a href="/logout">Logout</a>
+    </nav>
   </header>
 
   <main class="container narrow">
     <h2>Channel Setup Wizard</h2>
-    <p class="muted">Use this step-by-step wizard to connect LinkedIn or Facebook without technical jargon.</p>
+    <p class="muted">Use this guided setup to connect LinkedIn, Facebook, or Instagram.</p>
 
     {{if .Message}}<div class="notice success">{{.Message}}</div>{{end}}
     {{if .Error}}<div class="notice error">{{.Error}}</div>{{end}}
@@ -33,21 +35,26 @@
       <article class="stat-card"><h3>Disabled</h3><p>{{.Stats.Disabled}}</p></article>
       <article class="stat-card"><h3>LinkedIn</h3><p>{{.Stats.LinkedIn}}</p></article>
       <article class="stat-card"><h3>Facebook</h3><p>{{.Stats.Facebook}}</p></article>
+      <article class="stat-card"><h3>Instagram</h3><p>{{.Stats.Instagram}}</p></article>
       <article class="stat-card"><h3>Dry-run</h3><p>{{.Stats.DryRun}}</p></article>
     </section>
 
     <section class="wizard-grid">
       <a class="wizard-card" href="/settings/channels?type=linkedin">
         <strong>Connect LinkedIn</strong>
-        <span>Add token + author URN</span>
+        <span>Token + author URN</span>
       </a>
       <a class="wizard-card" href="/settings/channels?type=facebook-page">
         <strong>Connect Facebook Page</strong>
-        <span>Add page token + page id</span>
+        <span>Page token + page ID</span>
+      </a>
+      <a class="wizard-card" href="/settings/channels?type=instagram">
+        <strong>Connect Instagram</strong>
+        <span>Meta token + IG business account ID</span>
       </a>
       <a class="wizard-card" href="/settings/channels?type=dry-run">
         <strong>Practice mode</strong>
-        <span>No external API call required</span>
+        <span>No external API calls</span>
       </a>
     </section>
 
@@ -59,6 +66,7 @@
           <select id="channel-type" name="type" required>
             <option value="linkedin" {{if eq .Form.Type "linkedin"}}selected{{end}}>LinkedIn</option>
             <option value="facebook-page" {{if eq .Form.Type "facebook-page"}}selected{{end}}>Facebook Page</option>
+            <option value="instagram" {{if eq .Form.Type "instagram"}}selected{{end}}>Instagram</option>
             <option value="dry-run" {{if eq .Form.Type "dry-run"}}selected{{end}}>Dry-run (safe test)</option>
           </select>
         </label>
@@ -67,7 +75,7 @@
 
         <label>
           Step 2: Friendly name
-          <input type="text" name="display_name" value="{{.Form.DisplayName}}" placeholder="My Company LinkedIn" required>
+          <input type="text" name="display_name" value="{{.Form.DisplayName}}" placeholder="My Company Social" required>
         </label>
 
         <div class="channel-group" data-group="linkedin">
@@ -102,9 +110,26 @@
           </label>
         </div>
 
+        <div class="channel-group" data-group="instagram">
+          <h4>Instagram details</h4>
+          <p class="muted">Use an Instagram Business account connected through Meta Graph API.</p>
+          <label>
+            Instagram access token
+            <input type="password" name="instagram_access_token" value="{{.Form.InstagramAccessToken}}" placeholder="Paste your Instagram/Meta token">
+          </label>
+          <label>
+            Instagram business account ID
+            <input type="text" name="instagram_business_account_id" value="{{.Form.InstagramBusinessID}}" placeholder="1784...">
+          </label>
+          <label>
+            Instagram API base URL
+            <input type="url" name="instagram_api_base_url" value="{{.Form.InstagramAPIBaseURL}}" placeholder="https://graph.facebook.com/v22.0">
+          </label>
+        </div>
+
         <div class="channel-group" data-group="dry-run">
           <h4>Dry-run details</h4>
-          <p class="muted">Dry-run does not post externally. Perfect for testing calendars and agent flows.</p>
+          <p class="muted">Dry-run does not post externally. Perfect for testing calendar and bot flows.</p>
         </div>
 
         <div class="button-row">
@@ -142,6 +167,9 @@
                   {{else if eq .Type "facebook-page"}}
                     token={{if .FacebookConfigured}}{{.FacebookTokenMasked}}{{else}}missing{{end}}<br>
                     page={{if .FacebookConfigured}}{{.FacebookPageIDMasked}}{{else}}missing{{end}}
+                  {{else if eq .Type "instagram"}}
+                    token={{if .InstagramConfigured}}{{.InstagramTokenMasked}}{{else}}missing{{end}}<br>
+                    account={{if .InstagramConfigured}}{{.InstagramBizIDMasked}}{{else}}missing{{end}}
                   {{else}}
                     dry-run
                   {{end}}
@@ -186,14 +214,15 @@
       if (!typeSelect || !hint) return;
 
       const hints = {
-        'linkedin': 'LinkedIn: paste access token + author URN. Then click “Test” after saving.',
-        'facebook-page': 'Facebook Page: paste page token + page ID. Then click “Test” after saving.',
-        'dry-run': 'Dry-run: no external credentials required. Good for first-time setup.'
+        'linkedin': 'LinkedIn: paste access token + author URN, then click Test after saving.',
+        'facebook-page': 'Facebook Page: paste page token + page ID, then click Test.',
+        'instagram': 'Instagram: paste token + Instagram Business Account ID, then click Test.',
+        'dry-run': 'Dry-run: no external credentials required.'
       };
 
       const render = () => {
         const value = typeSelect.value;
-        hint.textContent = hints[value] || 'Choose a type to continue.';
+        hint.textContent = hints[value] || 'Choose a platform to continue.';
         groups.forEach((group) => {
           const groupType = group.getAttribute('data-group');
           group.style.display = groupType === value ? 'block' : 'none';

@@ -139,6 +139,36 @@ CREATE TABLE IF NOT EXISTS channel_rules (
 );
 `,
 	},
+	{
+		name: "007_instagram_and_post_media_type",
+		sql: `
+ALTER TABLE channels ADD COLUMN instagram_access_token TEXT NULL;
+ALTER TABLE channels ADD COLUMN instagram_business_account_id TEXT NULL;
+ALTER TABLE channels ADD COLUMN instagram_api_base_url TEXT NULL;
+
+ALTER TABLE posts ADD COLUMN media_type TEXT NULL;
+`,
+	},
+	{
+		name: "008_api_idempotency",
+		sql: `
+CREATE TABLE IF NOT EXISTS api_idempotency (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    auth_scope TEXT NOT NULL,
+    idempotency_key TEXT NOT NULL,
+    method TEXT NOT NULL,
+    path TEXT NOT NULL,
+    request_hash TEXT NOT NULL,
+    status_code INTEGER NOT NULL DEFAULT 0,
+    response_body TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_api_idempotency_scope_key
+ON api_idempotency(auth_scope, idempotency_key);
+`,
+	},
 }
 
 func Migrate(ctx context.Context, database *sql.DB) (string, error) {

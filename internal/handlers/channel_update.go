@@ -25,11 +25,17 @@ type ChannelUpdateFormInput struct {
 	FacebookPageID     string
 	FacebookAPIBaseURL string
 
+	InstagramBusinessID string
+	InstagramAPIBaseURL string
+
 	LinkedInAccessTokenAction string
 	LinkedInAccessToken       string
 
 	FacebookPageTokenAction string
 	FacebookPageToken       string
+
+	InstagramAccessTokenAction string
+	InstagramAccessToken       string
 }
 
 type ChannelRuleFormInput struct {
@@ -90,11 +96,17 @@ type channelUpdatePayload struct {
 	FacebookPageID     *string `json:"facebook_page_id,omitempty"`
 	FacebookAPIBaseURL *string `json:"facebook_api_base_url,omitempty"`
 
+	InstagramBusinessID *string `json:"instagram_business_account_id,omitempty"`
+	InstagramAPIBaseURL *string `json:"instagram_api_base_url,omitempty"`
+
 	LinkedInAccessTokenAction string  `json:"linkedin_access_token_action,omitempty"`
 	LinkedInAccessToken       *string `json:"linkedin_access_token,omitempty"`
 
 	FacebookPageTokenAction string  `json:"facebook_page_access_token_action,omitempty"`
 	FacebookPageToken       *string `json:"facebook_page_access_token,omitempty"`
+
+	InstagramAccessTokenAction string  `json:"instagram_access_token_action,omitempty"`
+	InstagramAccessToken       *string `json:"instagram_access_token,omitempty"`
 }
 
 type channelAuditEventResponse struct {
@@ -306,11 +318,17 @@ func parseChannelUpdateForm(r *http.Request) (db.ChannelUpdateInput, ChannelUpda
 		FacebookPageID:     strings.TrimSpace(r.FormValue("facebook_page_id")),
 		FacebookAPIBaseURL: strings.TrimSpace(r.FormValue("facebook_api_base_url")),
 
+		InstagramBusinessID: strings.TrimSpace(r.FormValue("instagram_business_account_id")),
+		InstagramAPIBaseURL: strings.TrimSpace(r.FormValue("instagram_api_base_url")),
+
 		LinkedInAccessTokenAction: strings.TrimSpace(r.FormValue("linkedin_access_token_action")),
 		LinkedInAccessToken:       strings.TrimSpace(r.FormValue("linkedin_access_token")),
 
 		FacebookPageTokenAction: strings.TrimSpace(r.FormValue("facebook_page_access_token_action")),
 		FacebookPageToken:       strings.TrimSpace(r.FormValue("facebook_page_access_token")),
+
+		InstagramAccessTokenAction: strings.TrimSpace(r.FormValue("instagram_access_token_action")),
+		InstagramAccessToken:       strings.TrimSpace(r.FormValue("instagram_access_token")),
 	}
 
 	linkedInAction, err := db.ParseSecretAction(form.LinkedInAccessTokenAction)
@@ -318,6 +336,10 @@ func parseChannelUpdateForm(r *http.Request) (db.ChannelUpdateInput, ChannelUpda
 		return db.ChannelUpdateInput{}, form, err
 	}
 	facebookAction, err := db.ParseSecretAction(form.FacebookPageTokenAction)
+	if err != nil {
+		return db.ChannelUpdateInput{}, form, err
+	}
+	instagramAction, err := db.ParseSecretAction(form.InstagramAccessTokenAction)
 	if err != nil {
 		return db.ChannelUpdateInput{}, form, err
 	}
@@ -335,11 +357,17 @@ func parseChannelUpdateForm(r *http.Request) (db.ChannelUpdateInput, ChannelUpda
 		FacebookPageID:     stringPointer(form.FacebookPageID),
 		FacebookAPIBaseURL: stringPointer(form.FacebookAPIBaseURL),
 
+		InstagramBusinessAccountID: stringPointer(form.InstagramBusinessID),
+		InstagramAPIBaseURL:        stringPointer(form.InstagramAPIBaseURL),
+
 		LinkedInAccessTokenAction: linkedInAction,
 		LinkedInAccessToken:       stringPointer(form.LinkedInAccessToken),
 
 		FacebookPageTokenAction: facebookAction,
 		FacebookPageToken:       stringPointer(form.FacebookPageToken),
+
+		InstagramAccessTokenAction: instagramAction,
+		InstagramAccessToken:       stringPointer(form.InstagramAccessToken),
 	}
 
 	return input, form, nil
@@ -354,6 +382,10 @@ func parseChannelUpdatePayload(payload channelUpdatePayload) (db.ChannelUpdateIn
 	if err != nil {
 		return db.ChannelUpdateInput{}, err
 	}
+	instagramAction, err := db.ParseSecretAction(payload.InstagramAccessTokenAction)
+	if err != nil {
+		return db.ChannelUpdateInput{}, err
+	}
 
 	return db.ChannelUpdateInput{
 		DisplayName: normalizePayloadStringPointer(payload.DisplayName),
@@ -364,11 +396,17 @@ func parseChannelUpdatePayload(payload channelUpdatePayload) (db.ChannelUpdateIn
 		FacebookPageID:     normalizePayloadStringPointer(payload.FacebookPageID),
 		FacebookAPIBaseURL: normalizePayloadStringPointer(payload.FacebookAPIBaseURL),
 
+		InstagramBusinessAccountID: normalizePayloadStringPointer(payload.InstagramBusinessID),
+		InstagramAPIBaseURL:        normalizePayloadStringPointer(payload.InstagramAPIBaseURL),
+
 		LinkedInAccessTokenAction: linkedInAction,
 		LinkedInAccessToken:       normalizePayloadStringPointer(payload.LinkedInAccessToken),
 
 		FacebookPageTokenAction: facebookAction,
 		FacebookPageToken:       normalizePayloadStringPointer(payload.FacebookPageToken),
+
+		InstagramAccessTokenAction: instagramAction,
+		InstagramAccessToken:       normalizePayloadStringPointer(payload.InstagramAccessToken),
 	}, nil
 }
 
@@ -382,8 +420,12 @@ func channelToUpdateForm(channel model.Channel) ChannelUpdateFormInput {
 		FacebookPageID:     derefString(channel.FacebookPageID),
 		FacebookAPIBaseURL: derefString(channel.FacebookAPIBaseURL),
 
-		LinkedInAccessTokenAction: string(db.SecretActionKeep),
-		FacebookPageTokenAction:   string(db.SecretActionKeep),
+		InstagramBusinessID: derefString(channel.InstagramBusinessAccountID),
+		InstagramAPIBaseURL: derefString(channel.InstagramAPIBaseURL),
+
+		LinkedInAccessTokenAction:  string(db.SecretActionKeep),
+		FacebookPageTokenAction:    string(db.SecretActionKeep),
+		InstagramAccessTokenAction: string(db.SecretActionKeep),
 	}
 }
 
