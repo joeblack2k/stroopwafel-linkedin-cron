@@ -36,6 +36,7 @@ type contextKey string
 
 const (
 	contextKeyAuthMethod contextKey = "auth_method"
+	contextKeyAuthUser   contextKey = "auth_user"
 	contextKeyAPIKeyID   contextKey = "api_key_id"
 	contextKeyAPIKeyName contextKey = "api_key_name"
 )
@@ -69,7 +70,8 @@ type paginationResponse struct {
 func BasicAuthMiddleware(username, password string, logger *slog.Logger) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if !isValidBasicAuth(r, username, password) {
+			authUser, ok := basicAuthUserIfValid(r, username, password)
+			if !ok {
 				logger.LogAttrs(
 					r.Context(),
 					slog.LevelWarn,
@@ -83,6 +85,7 @@ func BasicAuthMiddleware(username, password string, logger *slog.Logger) func(ht
 			}
 
 			ctx := context.WithValue(r.Context(), contextKeyAuthMethod, "basic")
+			ctx = context.WithValue(ctx, contextKeyAuthUser, authUser)
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}
@@ -91,8 +94,9 @@ func BasicAuthMiddleware(username, password string, logger *slog.Logger) func(ht
 func APIAuthMiddleware(username, password string, store *db.Store, staticAPIKeys map[string]string, logger *slog.Logger) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if isValidBasicAuth(r, username, password) {
+			if authUser, ok := basicAuthUserIfValid(r, username, password); ok {
 				ctx := context.WithValue(r.Context(), contextKeyAuthMethod, "basic")
+				ctx = context.WithValue(ctx, contextKeyAuthUser, authUser)
 				next.ServeHTTP(w, r.WithContext(ctx))
 				return
 			}
@@ -160,6 +164,11 @@ func authMethodFromContext(ctx context.Context) string {
 		return "unknown"
 	}
 	return value
+}
+
+func authUserFromContext(ctx context.Context) string {
+	value, _ := ctx.Value(contextKeyAuthUser).(string)
+	return strings.TrimSpace(value)
 }
 
 func apiKeyNameFromContext(ctx context.Context) string {

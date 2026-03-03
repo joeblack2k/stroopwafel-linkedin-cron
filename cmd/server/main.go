@@ -78,8 +78,12 @@ func main() {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", app.Healthz)
 	mux.HandleFunc("GET /api/v1/healthz", app.APIHealthz)
+	mux.HandleFunc("GET /login", app.LoginPage)
+	mux.HandleFunc("POST /login", app.LoginSubmit)
+	mux.HandleFunc("GET /logout", app.Logout)
+	mux.HandleFunc("POST /logout", app.Logout)
 
-	uiAuth := handlers.BasicAuthMiddleware(cfg.BasicAuthUser, cfg.BasicAuthPass, logger)
+	uiAuth := handlers.UIAuthMiddleware(cfg, logger)
 	apiAuth := handlers.APIAuthMiddleware(cfg.BasicAuthUser, cfg.BasicAuthPass, store, cfg.StaticAPIKeys, logger)
 	registerProtectedRoutes(mux, uiAuth, apiAuth, app)
 
@@ -126,7 +130,7 @@ func registerProtectedRoutes(mux *http.ServeMux, uiAuth func(http.Handler) http.
 
 	staticDir := filepath.Join("web", "static")
 	staticHandler := http.StripPrefix("/static/", http.FileServer(http.Dir(staticDir)))
-	mux.Handle("GET /static/", uiAuth(staticHandler))
+	mux.Handle("GET /static/", staticHandler)
 
 	mux.Handle("GET /calendar", uiAuth(http.HandlerFunc(app.Calendar)))
 	mux.Handle("GET /posts/new", uiAuth(http.HandlerFunc(app.NewPost)))
@@ -161,10 +165,13 @@ func registerProtectedRoutes(mux *http.ServeMux, uiAuth func(http.Handler) http.
 	mux.Handle("PUT /api/v1/posts/{id}", apiAuth(http.HandlerFunc(app.APIUpdatePost)))
 	mux.Handle("DELETE /api/v1/posts/{id}", apiAuth(http.HandlerFunc(app.APIDeletePost)))
 	mux.Handle("POST /api/v1/posts/{id}/send-now", apiAuth(http.HandlerFunc(app.APISendNowPost)))
+	mux.Handle("POST /api/v1/posts/{id}/send-and-delete", apiAuth(http.HandlerFunc(app.APISendAndDeletePost)))
+	mux.Handle("POST /api/v1/posts/{id}/reschedule", apiAuth(http.HandlerFunc(app.APIReschedulePost)))
 	mux.Handle("GET /api/v1/posts/{id}/attempts", apiAuth(http.HandlerFunc(app.APIListPostAttempts)))
 	mux.Handle("POST /api/v1/posts/bulk/send-now", apiAuth(http.HandlerFunc(app.APIBulkSendNowPosts)))
 	mux.Handle("POST /api/v1/posts/bulk/channels", apiAuth(http.HandlerFunc(app.APIBulkSetPostChannels)))
 	mux.Handle("GET /api/v1/settings/status", apiAuth(http.HandlerFunc(app.APISettingsStatus)))
+	mux.Handle("POST /api/v1/settings/bot-handoff", apiAuth(http.HandlerFunc(app.APICreateBotHandoff)))
 	mux.Handle("GET /api/v1/channels", apiAuth(http.HandlerFunc(app.APIListChannels)))
 	mux.Handle("POST /api/v1/channels", apiAuth(http.HandlerFunc(app.APICreateChannel)))
 	mux.Handle("PUT /api/v1/channels/{id}", apiAuth(http.HandlerFunc(app.APIUpdateChannel)))

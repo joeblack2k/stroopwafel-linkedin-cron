@@ -525,12 +525,16 @@ func (a *App) channelAuditActor(ctx context.Context) string {
 			return fmt.Sprintf("api-key:%d", apiKeyID)
 		}
 		return "api-key"
-	case "basic":
-		username := strings.TrimSpace(a.Config.BasicAuthUser)
+	case "basic", "session":
+		prefix := authMethodFromContext(ctx)
+		username := authUserFromContext(ctx)
 		if username == "" {
-			return "basic"
+			username = strings.TrimSpace(a.Config.BasicAuthUser)
 		}
-		return "basic:" + username
+		if username == "" {
+			return prefix
+		}
+		return prefix + ":" + username
 	default:
 		return "unknown"
 	}

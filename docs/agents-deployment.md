@@ -60,6 +60,7 @@ At minimum set in `.env`:
 - `APP_BASIC_AUTH_USER`
 - `APP_BASIC_AUTH_PASS`
 - `APP_DB_PATH=/data/linkedin-cron.db`
+- `APP_SESSION_SECURE` (set `true` behind HTTPS/reverse proxy)
 
 Optional publisher settings:
 
@@ -69,6 +70,14 @@ Optional publisher settings:
 Optional bot API key bootstrap:
 
 - `APP_STATIC_API_KEYS=bot-main:lcak_prod_xxx`
+
+
+
+UI login:
+
+- Login UI is available on `/login` (username/password)
+- Session cookies are HttpOnly + SameSite=Lax
+- `/logout` clears the session cookie
 
 ## 3) Health checks
 

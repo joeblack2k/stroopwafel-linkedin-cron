@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
@@ -490,4 +491,88 @@ func TestAPIUpdateChannelSecretActions(t *testing.T) {
 func ptrString(value string) *string {
 	copyValue := value
 	return &copyValue
+}
+
+func TestAPIReschedulePostDraftTransitionsToScheduled(t *testing.T) {
+	t.Parallel()
+
+	app := newAPIApp(t)
+	post, err := app.Store.CreatePost(context.Background(), db.PostInput{
+		Text:   "draft post",
+		Status: model.StatusDraft,
+	})
+	if err != nil {
+		t.Fatalf("create post: %v", err)
+	}
+
+	payload := map[string]any{
+		"scheduled_at": time.Now().UTC().Add(2 * time.Hour).Format(time.RFC3339),
+	}
+	path := "/api/v1/posts/" + strconv.FormatInt(post.ID, 10) + "/reschedule"
+	recorder := performJSONHandlerRequest(t, http.MethodPost, path, payload, app.APIReschedulePost)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d (%s)", recorder.Code, recorder.Body.String())
+	}
+
+	updated, err := app.Store.GetPost(context.Background(), post.ID)
+	if err != nil {
+		t.Fatalf("reload post: %v", err)
+	}
+	if updated.Status != model.StatusScheduled {
+		t.Fatalf("expected status scheduled, got %s", updated.Status)
+	}
+	if updated.ScheduledAt == nil {
+		t.Fatal("expected scheduled_at to be set")
+	}
+}
+
+func TestAPISendAndDeletePost(t *testing.T) {
+	t.Parallel()
+
+	app := newAPIApp(t)
+	channel := mustCreateDryRunChannel(t, app.Store)
+	post, err := app.Store.CreatePost(context.Background(), db.PostInput{
+		Text:        "send and delete",
+		Status:      model.StatusScheduled,
+		ScheduledAt: ptrTimeForTest(time.Now().UTC().Add(-1 * time.Minute)),
+	})
+	if err != nil {
+		t.Fatalf("create post: %v", err)
+	}
+	if err := app.Store.ReplacePostChannels(context.Background(), post.ID, []int64{channel.ID}); err != nil {
+		t.Fatalf("replace channels: %v", err)
+	}
+
+	path := "/api/v1/posts/" + strconv.FormatInt(post.ID, 10) + "/send-and-delete"
+	recorder := performJSONHandlerRequest(t, http.MethodPost, path, map[string]any{}, app.APISendAndDeletePost)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d (%s)", recorder.Code, recorder.Body.String())
+	}
+
+	if _, err := app.Store.GetPost(context.Background(), post.ID); !errors.Is(err, db.ErrNotFound) {
+		t.Fatalf("expected deleted post, got err=%v", err)
+	}
+}
+
+func TestAPICreateBotHandoff(t *testing.T) {
+	t.Parallel()
+
+	app := newAPIApp(t)
+	recorder := performJSONHandlerRequest(t, http.MethodPost, "/api/v1/settings/bot-handoff", map[string]any{"name": "bot-ui"}, app.APICreateBotHandoff)
+	if recorder.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d (%s)", recorder.Code, recorder.Body.String())
+	}
+
+	var payload map[string]any
+	if err := json.Unmarshal(recorder.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("decode payload: %v", err)
+	}
+	apiKey, _ := payload["api_key"].(string)
+	if !strings.HasPrefix(apiKey, "lcak_") {
+		t.Fatalf("expected api key prefix lcak_, got %q", apiKey)
+	}
+	instructions, _ := payload["instructions"].(string)
+	if !strings.Contains(instructions, "/api/v1/posts") {
+		t.Fatalf("expected handoff instructions to mention posts endpoint")
+	}
 }

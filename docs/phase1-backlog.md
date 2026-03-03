@@ -116,3 +116,29 @@ Bring the product closer to Postiz by introducing channel management and post-to
 5. **Channel setup wizard polish**
    - Reworked `/settings/channels` into a guided 3-step channel setup wizard
    - Added platform-specific hints and dynamic form visibility for LinkedIn/Facebook/Dry-run
+
+
+## Sprint F (implemented)
+
+1. **Friendly login flow for public URL deployments**
+   - Added `/login` username/password form
+   - Added signed HttpOnly session cookie auth for UI routes
+   - Added `/logout` endpoint and navigation links
+   - Preserved API auth model (Basic + API keys)
+
+2. **Session security hardening**
+   - Session cookies use `HttpOnly`, `SameSite=Lax`
+   - `Secure` cookie flag controlled by `APP_SESSION_SECURE`
+   - Session tokens are HMAC-signed and time-bounded
+
+## Sprint G (implemented)
+
+1. **Agent API ergonomics**
+   - Added `POST /api/v1/posts/{id}/send-and-delete`
+   - Added `POST /api/v1/posts/{id}/reschedule`
+   - Added `POST /api/v1/settings/bot-handoff`
+
+2. **Public UX continuity improvements**
+   - Made static assets public so `/login` is fully styled without auth
+   - Added logout affordance in UI navigation
+   - Expanded docs + tests for new agent/UI flows

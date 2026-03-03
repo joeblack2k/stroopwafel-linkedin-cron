@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{.Title}} · linkedin-cron</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <main class="container narrow">
+    <section class="panel stack" style="max-width: 420px; margin: 8vh auto;">
+      <h2>Welcome back</h2>
+      <p class="muted">Sign in with your username and password.</p>
+
+      {{if .Message}}<div class="notice success">{{.Message}}</div>{{end}}
+      {{if .Error}}<div class="notice error">{{.Error}}</div>{{end}}
+
+      <form method="post" action="/login" class="stack">
+        <input type="hidden" name="next" value="{{.Next}}">
+        <label>
+          Username
+          <input type="text" name="username" value="{{.User}}" autocomplete="username" required>
+        </label>
+        <label>
+          Password
+          <input type="password" name="password" autocomplete="current-password" required>
+        </label>
+        <div class="button-row">
+          <button type="submit">Sign in</button>
+        </div>
+      </form>
+
+      <p class="muted" style="margin:0;">For API agents, use API keys from Settings after login.</p>
+    </section>
+  </main>
+</body>
+</html>

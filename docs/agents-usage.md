@@ -92,6 +92,21 @@ Send now:
 curl -X POST -H "X-API-Key: lcak_xxx" http://localhost:8080/api/v1/posts/1/send-now
 ```
 
+Send and delete:
+
+```bash
+curl -X POST -H "X-API-Key: lcak_xxx" http://localhost:8080/api/v1/posts/1/send-and-delete
+```
+
+Reschedule:
+
+```bash
+curl -X POST http://localhost:8080/api/v1/posts/1/reschedule \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: lcak_xxx" \
+  -d '{"scheduled_at":"2026-03-03T13:00:00Z"}'
+```
+
 ## Channel credential rotation
 
 Update channel credentials with explicit action semantics for secrets:
@@ -113,6 +128,22 @@ curl -X PUT http://localhost:8080/api/v1/channels/1 \
     "linkedin_author_urn": "urn:li:organization:123"
   }'
 ```
+
+### API bootstrap handoff endpoint
+
+Agents or operators can also generate a fresh API key via API:
+
+```bash
+curl -X POST http://localhost:8080/api/v1/settings/bot-handoff \
+  -H "Content-Type: application/json" \
+  -u admin:admin \
+  -d '{"name":"bot-main"}'
+```
+
+This returns:
+
+- `api_key`
+- `instructions` (copy-ready handoff text)
 
 ## Bulk operations
 

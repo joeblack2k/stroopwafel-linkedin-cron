@@ -19,6 +19,14 @@ type postPayload struct {
 	ChannelIDs  []int64 `json:"channel_ids,omitempty"`
 }
 
+type postReschedulePayload struct {
+	ScheduledAt string `json:"scheduled_at"`
+}
+
+type botHandoffPayload struct {
+	Name string `json:"name"`
+}
+
 type postResponse struct {
 	ID          int64   `json:"id"`
 	ScheduledAt *string `json:"scheduled_at,omitempty"`
@@ -207,6 +215,123 @@ func (a *App) APISendNowPost(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, mapped)
+}
+
+func (a *App) APISendAndDeletePost(w http.ResponseWriter, r *http.Request) {
+	id, err := parseID(r.PathValue("id"))
+	if err != nil {
+		writeAPIError(w, http.StatusBadRequest, "invalid post id")
+		return
+	}
+
+	if err := a.Scheduler.SendNow(r.Context(), id); err != nil {
+		if errors.Is(err, db.ErrNotFound) {
+			writeAPIError(w, http.StatusNotFound, "post not found")
+			return
+		}
+		writeAPIError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	if err := a.Store.DeletePost(r.Context(), id); err != nil {
+		if errors.Is(err, db.ErrNotFound) {
+			writeAPIError(w, http.StatusNotFound, "post not found")
+			return
+		}
+		writeAPIError(w, http.StatusInternalServerError, "post sent but delete failed")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"id":     id,
+		"status": "sent_and_deleted",
+	})
+}
+
+func (a *App) APIReschedulePost(w http.ResponseWriter, r *http.Request) {
+	id, err := parseID(r.PathValue("id"))
+	if err != nil {
+		writeAPIError(w, http.StatusBadRequest, "invalid post id")
+		return
+	}
+
+	var payload postReschedulePayload
+	if err := readJSONBody(r, &payload); err != nil {
+		writeAPIError(w, http.StatusBadRequest, "invalid JSON payload")
+		return
+	}
+
+	scheduledAt, err := parseRFC3339(payload.ScheduledAt)
+	if err != nil || scheduledAt == nil {
+		writeAPIError(w, http.StatusBadRequest, "scheduled_at must be RFC3339")
+		return
+	}
+
+	post, err := a.Store.GetPost(r.Context(), id)
+	if err != nil {
+		if errors.Is(err, db.ErrNotFound) {
+			writeAPIError(w, http.StatusNotFound, "post not found")
+			return
+		}
+		writeAPIError(w, http.StatusInternalServerError, "failed to load post")
+		return
+	}
+	if post.Status == model.StatusSent {
+		writeAPIError(w, http.StatusBadRequest, "sent posts cannot be rescheduled")
+		return
+	}
+
+	status := post.Status
+	if status == model.StatusDraft || status == model.StatusFailed {
+		status = model.StatusScheduled
+	}
+
+	updated, err := a.Store.UpdatePost(r.Context(), id, db.PostInput{
+		ScheduledAt: scheduledAt,
+		Text:        post.Text,
+		Status:      status,
+		MediaURL:    post.MediaURL,
+	})
+	if err != nil {
+		if errors.Is(err, db.ErrNotFound) {
+			writeAPIError(w, http.StatusNotFound, "post not found")
+			return
+		}
+		writeAPIError(w, http.StatusInternalServerError, "failed to reschedule post")
+		return
+	}
+
+	mapped, mapErr := a.mapPostResponse(r.Context(), updated)
+	if mapErr != nil {
+		writeAPIError(w, http.StatusInternalServerError, "failed to load post channels")
+		return
+	}
+	writeJSON(w, http.StatusOK, mapped)
+}
+
+func (a *App) APICreateBotHandoff(w http.ResponseWriter, r *http.Request) {
+	var payload botHandoffPayload
+	if err := readJSONBody(r, &payload); err != nil {
+		writeAPIError(w, http.StatusBadRequest, "invalid JSON payload")
+		return
+	}
+
+	name := strings.TrimSpace(payload.Name)
+	if name == "" {
+		name = "api-bot-" + time.Now().In(a.Config.Location).Format("20060102-150405")
+	}
+
+	created, rawToken, err := a.Store.CreateAPIKey(r.Context(), name)
+	if err != nil {
+		writeAPIError(w, http.StatusInternalServerError, "failed to create api key")
+		return
+	}
+
+	writeJSON(w, http.StatusCreated, map[string]any{
+		"name":         created.Name,
+		"api_key":      rawToken,
+		"instructions": a.buildBotHandoff(rawToken),
+	})
 }
 
 func parsePostPayload(payload postPayload) (db.PostInput, []int64, error) {

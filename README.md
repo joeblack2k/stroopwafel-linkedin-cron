@@ -98,6 +98,8 @@ API routes support:
 
 API keys are created/revoked in `/settings`.
 
+UI routes now support a friendly username/password login form (`/login`) backed by HttpOnly session cookies.
+
 For non-technical onboarding, `/settings` includes **Give this to your bot** (auto key + copyable agent instructions).
 
 For container-first/public deployments you can also bootstrap fixed API keys from env:
@@ -115,6 +117,10 @@ Security behavior:
 ## UI Endpoints
 
 - `GET /healthz`
+- `GET /login`
+- `POST /login`
+- `GET /logout`
+- `POST /logout`
 - `GET /calendar?view=month|week|list&date=YYYY-MM-DD`
 - `GET /posts/new`
 - `POST /posts`
@@ -165,10 +171,13 @@ Bulk UI highlights:
 - `PUT /api/v1/posts/{id}`
 - `DELETE /api/v1/posts/{id}`
 - `POST /api/v1/posts/{id}/send-now`
+- `POST /api/v1/posts/{id}/send-and-delete`
+- `POST /api/v1/posts/{id}/reschedule`
 - `GET /api/v1/posts/{id}/attempts`
 - `POST /api/v1/posts/bulk/send-now`
 - `POST /api/v1/posts/bulk/channels`
 - `GET /api/v1/settings/status`
+- `POST /api/v1/settings/bot-handoff`
 - `GET /api/v1/channels`
 - `POST /api/v1/channels`
 - `PUT /api/v1/channels/{id}`
@@ -188,6 +197,9 @@ Notes:
 - channel responses include explicit masked previews in `secret_preview` and presence booleans in `secret_presence`
 - `GET /api/v1/posts/{id}/attempts` supports `status`, `channel_id`, `attempted_from`, `attempted_to`, plus pagination (`limit`, `offset`) and returns `{items, pagination}`
 - `GET /api/v1/channels/{id}/audit` is paginated (`limit`, `offset`) and returns `{items, pagination}`
+- `POST /api/v1/posts/{id}/reschedule` accepts `{ "scheduled_at": "RFC3339" }` and auto-moves draft/failed posts to `scheduled`
+- `POST /api/v1/posts/{id}/send-and-delete` publishes immediately, then removes the post from the queue
+- `POST /api/v1/settings/bot-handoff` creates an API key and returns copy-ready agent instructions
 
 ## Scheduler & Retry Behavior
 
