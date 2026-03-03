@@ -13,98 +13,101 @@
       <a href="/calendar">Calendar</a>
       <a href="/posts/new">New Post</a>
       <a href="/posts/bulk">Bulk</a>
-      <a href="/settings">Settings</a>
       <a href="/settings/channels">Channels</a>
+      <a href="/settings">Settings</a>
     </nav>
   </header>
 
   <main class="container narrow">
-    <h2>Channels</h2>
+    <h2>Channel Setup Wizard</h2>
+    <p class="muted">Use this step-by-step wizard to connect LinkedIn or Facebook without technical jargon.</p>
+
     {{if .Message}}<div class="notice success">{{.Message}}</div>{{end}}
     {{if .Error}}<div class="notice error">{{.Error}}</div>{{end}}
 
     <section class="stats-grid">
-      <article class="stat-card">
-        <h3>Total</h3>
-        <p>{{.Stats.Total}}</p>
-      </article>
-      <article class="stat-card ok">
-        <h3>Active</h3>
-        <p>{{.Stats.Active}}</p>
-      </article>
-      <article class="stat-card warn">
-        <h3>Error</h3>
-        <p>{{.Stats.Error}}</p>
-      </article>
-      <article class="stat-card">
-        <h3>Disabled</h3>
-        <p>{{.Stats.Disabled}}</p>
-      </article>
-      <article class="stat-card">
-        <h3>LinkedIn</h3>
-        <p>{{.Stats.LinkedIn}}</p>
-      </article>
-      <article class="stat-card">
-        <h3>Facebook</h3>
-        <p>{{.Stats.Facebook}}</p>
-      </article>
-      <article class="stat-card">
-        <h3>Dry-Run</h3>
-        <p>{{.Stats.DryRun}}</p>
-      </article>
+      <article class="stat-card"><h3>Total</h3><p>{{.Stats.Total}}</p></article>
+      <article class="stat-card ok"><h3>Active</h3><p>{{.Stats.Active}}</p></article>
+      <article class="stat-card warn"><h3>Error</h3><p>{{.Stats.Error}}</p></article>
+      <article class="stat-card"><h3>Disabled</h3><p>{{.Stats.Disabled}}</p></article>
+      <article class="stat-card"><h3>LinkedIn</h3><p>{{.Stats.LinkedIn}}</p></article>
+      <article class="stat-card"><h3>Facebook</h3><p>{{.Stats.Facebook}}</p></article>
+      <article class="stat-card"><h3>Dry-run</h3><p>{{.Stats.DryRun}}</p></article>
+    </section>
+
+    <section class="wizard-grid">
+      <a class="wizard-card" href="/settings/channels?type=linkedin">
+        <strong>Connect LinkedIn</strong>
+        <span>Add token + author URN</span>
+      </a>
+      <a class="wizard-card" href="/settings/channels?type=facebook-page">
+        <strong>Connect Facebook Page</strong>
+        <span>Add page token + page id</span>
+      </a>
+      <a class="wizard-card" href="/settings/channels?type=dry-run">
+        <strong>Practice mode</strong>
+        <span>No external API call required</span>
+      </a>
     </section>
 
     <section class="actions">
-      <h3>Add channel</h3>
-      <form method="post" action="/settings/channels" class="stack">
+      <h3>Step 1 → 3: Add channel</h3>
+      <form method="post" action="/settings/channels" class="stack panel">
         <label>
-          Type
+          Step 1: Choose platform
           <select id="channel-type" name="type" required>
-            <option value="linkedin" {{if eq .Form.Type "linkedin"}}selected{{end}}>linkedin</option>
-            <option value="facebook-page" {{if eq .Form.Type "facebook-page"}}selected{{end}}>facebook-page</option>
-            <option value="dry-run" {{if or (eq .Form.Type "") (eq .Form.Type "dry-run")}}selected{{end}}>dry-run</option>
+            <option value="linkedin" {{if eq .Form.Type "linkedin"}}selected{{end}}>LinkedIn</option>
+            <option value="facebook-page" {{if eq .Form.Type "facebook-page"}}selected{{end}}>Facebook Page</option>
+            <option value="dry-run" {{if eq .Form.Type "dry-run"}}selected{{end}}>Dry-run (safe test)</option>
           </select>
         </label>
 
         <p id="channel-type-hint" class="muted"></p>
 
         <label>
-          Display name
-          <input type="text" name="display_name" value="{{.Form.DisplayName}}" placeholder="LinkedIn Company Page" required>
+          Step 2: Friendly name
+          <input type="text" name="display_name" value="{{.Form.DisplayName}}" placeholder="My Company LinkedIn" required>
         </label>
 
-        <label>
-          LinkedIn access token
-          <input type="password" name="linkedin_access_token" value="{{.Form.LinkedInAccessToken}}" placeholder="Required when type=linkedin">
-        </label>
+        <div class="channel-group" data-group="linkedin">
+          <h4>LinkedIn details</h4>
+          <label>
+            LinkedIn access token
+            <input type="password" name="linkedin_access_token" value="{{.Form.LinkedInAccessToken}}" placeholder="Paste your LinkedIn token">
+          </label>
+          <label>
+            LinkedIn author URN
+            <input type="text" name="linkedin_author_urn" value="{{.Form.LinkedInAuthorURN}}" placeholder="urn:li:organization:123...">
+          </label>
+          <label>
+            LinkedIn API base URL
+            <input type="url" name="linkedin_api_base_url" value="{{.Form.LinkedInAPIBaseURL}}" placeholder="https://api.linkedin.com">
+          </label>
+        </div>
 
-        <label>
-          LinkedIn author URN
-          <input type="text" name="linkedin_author_urn" value="{{.Form.LinkedInAuthorURN}}" placeholder="urn:li:person:... or urn:li:organization:...">
-        </label>
+        <div class="channel-group" data-group="facebook-page">
+          <h4>Facebook Page details</h4>
+          <label>
+            Facebook page access token
+            <input type="password" name="facebook_page_access_token" value="{{.Form.FacebookPageAccessToken}}" placeholder="Paste your Page token">
+          </label>
+          <label>
+            Facebook page ID
+            <input type="text" name="facebook_page_id" value="{{.Form.FacebookPageID}}" placeholder="123456789012345">
+          </label>
+          <label>
+            Facebook API base URL
+            <input type="url" name="facebook_api_base_url" value="{{.Form.FacebookAPIBaseURL}}" placeholder="https://graph.facebook.com/v22.0">
+          </label>
+        </div>
 
-        <label>
-          LinkedIn API base URL
-          <input type="url" name="linkedin_api_base_url" value="{{.Form.LinkedInAPIBaseURL}}" placeholder="https://api.linkedin.com">
-        </label>
-
-        <label>
-          Facebook page access token
-          <input type="password" name="facebook_page_access_token" value="{{.Form.FacebookPageAccessToken}}" placeholder="Required when type=facebook-page">
-        </label>
-
-        <label>
-          Facebook page ID
-          <input type="text" name="facebook_page_id" value="{{.Form.FacebookPageID}}" placeholder="123456789012345">
-        </label>
-
-        <label>
-          Facebook API base URL
-          <input type="url" name="facebook_api_base_url" value="{{.Form.FacebookAPIBaseURL}}" placeholder="https://graph.facebook.com/v22.0">
-        </label>
+        <div class="channel-group" data-group="dry-run">
+          <h4>Dry-run details</h4>
+          <p class="muted">Dry-run does not post externally. Perfect for testing calendars and agent flows.</p>
+        </div>
 
         <div class="button-row">
-          <button type="submit">Add channel</button>
+          <button type="submit">Step 3: Save channel</button>
         </div>
       </form>
     </section>
@@ -178,20 +181,26 @@
     (function () {
       const typeSelect = document.getElementById('channel-type');
       const hint = document.getElementById('channel-type-hint');
+      const groups = Array.from(document.querySelectorAll('.channel-group'));
       if (!typeSelect || !hint) return;
 
       const hints = {
-        'linkedin': 'LinkedIn requires access token + author URN. Test runs a live token probe endpoint.',
-        'facebook-page': 'Facebook requires page access token + page ID. Test runs a live page probe endpoint.',
-        'dry-run': 'Dry-run stores channel metadata only and always validates without external API calls.'
+        'linkedin': 'LinkedIn: paste access token + author URN. Then click “Test” after saving.',
+        'facebook-page': 'Facebook Page: paste page token + page ID. Then click “Test” after saving.',
+        'dry-run': 'Dry-run: no external credentials required. Good for first-time setup.'
       };
 
-      const renderHint = () => {
-        hint.textContent = hints[typeSelect.value] || 'Choose a type to see validation requirements.';
+      const render = () => {
+        const value = typeSelect.value;
+        hint.textContent = hints[value] || 'Choose a type to continue.';
+        groups.forEach((group) => {
+          const groupType = group.getAttribute('data-group');
+          group.style.display = groupType === value ? 'block' : 'none';
+        });
       };
 
-      typeSelect.addEventListener('change', renderHint);
-      renderHint();
+      typeSelect.addEventListener('change', render);
+      render();
     })();
   </script>
 </body>

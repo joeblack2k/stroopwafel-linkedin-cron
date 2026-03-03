@@ -90,3 +90,29 @@ Bring the product closer to Postiz by introducing channel management and post-to
 4. **Bulk UX polish (phase 4 implemented)**
    - Added server-side bulk filters (`status`, `q`) on `/posts/bulk`
    - Preserved filter context across bulk action redirects and retries
+
+
+## Sprint E (implemented)
+
+1. **Calendar UX upgrade**
+   - Added `view=list` calendar mode with ready-date summary + full queue cards
+   - Added compact card labels (`LINKEDIN POST`, `FACEBOOK POST`, `MULTI CHANNEL POST`)
+   - Added card actions: `view post`, `edit post`, `send and delete`
+
+2. **Drag & drop rescheduling**
+   - Added week time-grid UI (vertical hour rows)
+   - Added drag-drop interaction in month and week views
+   - Added `POST /posts/{id}/reschedule` endpoint
+
+3. **Post detail flow**
+   - Added `GET /posts/{id}` post detail page
+   - Added `POST /posts/{id}/send-and-delete` convenience action
+
+4. **Settings bot handoff UX**
+   - Added one-click bot handoff action in `/settings`
+   - Added `POST /settings/api-keys/bot-handoff` route
+   - Generates API key + copyable instruction payload for agents
+
+5. **Channel setup wizard polish**
+   - Reworked `/settings/channels` into a guided 3-step channel setup wizard
+   - Added platform-specific hints and dynamic form visibility for LinkedIn/Facebook/Dry-run

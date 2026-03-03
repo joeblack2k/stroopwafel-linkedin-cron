@@ -109,11 +109,12 @@ type channelResponse struct {
 }
 
 func (a *App) Channels(w http.ResponseWriter, r *http.Request) {
+	defaultType := normalizeChannelTypeParam(r.URL.Query().Get("type"))
 	a.renderChannelsPage(
 		w,
 		r,
 		http.StatusOK,
-		ChannelFormInput{},
+		ChannelFormInput{Type: defaultType},
 		strings.TrimSpace(r.URL.Query().Get("msg")),
 		strings.TrimSpace(r.URL.Query().Get("err")),
 	)
@@ -325,6 +326,16 @@ func (a *App) APITestChannel(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, mapChannelResponse(tested))
+}
+
+func normalizeChannelTypeParam(raw string) string {
+	trimmed := strings.ToLower(strings.TrimSpace(raw))
+	switch trimmed {
+	case string(model.ChannelTypeLinkedIn), string(model.ChannelTypeFacebook), string(model.ChannelTypeDryRun):
+		return trimmed
+	default:
+		return string(model.ChannelTypeLinkedIn)
+	}
 }
 
 func parseChannelForm(r *http.Request) (db.ChannelInput, ChannelFormInput, error) {

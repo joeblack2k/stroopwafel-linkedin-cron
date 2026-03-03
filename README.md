@@ -98,6 +98,8 @@ API routes support:
 
 API keys are created/revoked in `/settings`.
 
+For non-technical onboarding, `/settings` includes **Give this to your bot** (auto key + copyable agent instructions).
+
 For container-first/public deployments you can also bootstrap fixed API keys from env:
 
 - `APP_STATIC_API_KEYS=bot-main:lcak_prod_xxx`
@@ -113,18 +115,24 @@ Security behavior:
 ## UI Endpoints
 
 - `GET /healthz`
-- `GET /calendar?view=month|week&date=YYYY-MM-DD`
+- `GET /calendar?view=month|week|list&date=YYYY-MM-DD`
 - `GET /posts/new`
 - `POST /posts`
+- `GET /posts/{id}`
 - `GET /posts/{id}/edit`
 - `POST /posts/{id}`
 - `POST /posts/{id}/delete`
 - `POST /posts/{id}/send-now`
+- `POST /posts/{id}/send-and-delete`
+- `POST /posts/{id}/reschedule`
 - `GET /posts/{id}/history`
 - `GET /posts/bulk`
 - `POST /posts/bulk/channels`
 - `POST /posts/bulk/send-now`
 - `GET /settings`
+- `POST /settings/api-keys`
+- `POST /settings/api-keys/bot-handoff`
+- `POST /settings/api-keys/{id}/revoke`
 - `GET /settings/channels`
 - `POST /settings/channels`
 - `GET /settings/channels/{id}/edit`
@@ -133,6 +141,13 @@ Security behavior:
 - `POST /settings/channels/{id}/disable`
 - `POST /settings/channels/{id}/enable`
 - `POST /settings/channels/{id}/delete`
+
+Calendar UX highlights:
+
+- month cards show compact labels (`LINKEDIN POST`, `FACEBOOK POST`, etc.) instead of full body text
+- actions per card: `view post`, `edit post`, `send and delete`
+- drag-and-drop rescheduling in month and week views (week includes vertical time grid)
+- list mode combines ready dates + full post queue in one page
 
 Bulk UI highlights:
 

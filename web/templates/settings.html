@@ -13,54 +13,89 @@
       <a href="/calendar">Calendar</a>
       <a href="/posts/new">New Post</a>
       <a href="/posts/bulk">Bulk</a>
-      <a href="/settings">Settings</a>
       <a href="/settings/channels">Channels</a>
+      <a href="/settings">Settings</a>
     </nav>
   </header>
 
   <main class="container narrow">
-    <h2>Settings status</h2>
+    <h2>Settings & Agent Access</h2>
+    <p class="muted">Tip: use “Give this to your bot” for one-click onboarding.</p>
+
     {{if .Message}}<div class="notice success">{{.Message}}</div>{{end}}
     {{if .Error}}<div class="notice error">{{.Error}}</div>{{end}}
 
     {{if .CreatedAPIKey}}
       <div class="notice success">
-        <strong>Copy this API key now:</strong><br>
-        <code>{{.CreatedAPIKey}}</code>
+        <strong>API key (shown once)</strong>
+        <div class="copy-wrap">
+          <code id="created-api-key">{{.CreatedAPIKey}}</code>
+          <button type="button" class="ghost" data-copy-target="created-api-key">Copy</button>
+        </div>
       </div>
     {{end}}
 
-    <table>
-      <tbody>
-        <tr><th>Basic auth configured</th><td>{{.Settings.BasicAuthConfigured}}</td></tr>
-        <tr><th>Auth user</th><td>{{.Settings.MaskedAuthUser}}</td></tr>
-        <tr><th>Auth password</th><td>{{.Settings.MaskedAuthPass}}</td></tr>
-        <tr><th>Publisher mode (active)</th><td>{{.Settings.PublisherMode}}</td></tr>
-        <tr><th>Publisher mode (requested)</th><td>{{.Settings.RequestedMode}}</td></tr>
-        <tr><th>LinkedIn configured</th><td>{{.Settings.LinkedInConfigured}}</td></tr>
-        <tr><th>LinkedIn token</th><td>{{.Settings.MaskedLinkedInToken}}</td></tr>
-        <tr><th>LinkedIn author URN</th><td>{{.Settings.MaskedAuthorURN}}</td></tr>
-        <tr><th>Facebook Page configured</th><td>{{.Settings.FacebookConfigured}}</td></tr>
-        <tr><th>Facebook Page token</th><td>{{.Settings.MaskedFacebookToken}}</td></tr>
-        <tr><th>Facebook Page ID</th><td>{{.Settings.MaskedFacebookPage}}</td></tr>
-        <tr><th>DB path</th><td><code>{{.Settings.DBPath}}</code></td></tr>
-        <tr><th>Timezone</th><td>{{.Settings.Timezone}}</td></tr>
-        <tr><th>Migration status</th><td>{{.Settings.MigrationStatus}}</td></tr>
-      </tbody>
-    </table>
+    {{if .BotHandoff}}
+      <section class="panel">
+        <h3>Give this to your bot</h3>
+        <p class="muted">This text includes a fresh API key and usage guide.</p>
+        <textarea id="bot-handoff" rows="16" readonly>{{.BotHandoff}}</textarea>
+        <div class="button-row">
+          <button type="button" data-copy-target="bot-handoff">Copy handoff text</button>
+        </div>
+      </section>
+    {{end}}
 
     <section class="actions">
-      <h3>Agent API keys</h3>
-      <form method="post" action="/settings/api-keys" class="stack">
-        <label>
-          Key name
-          <input type="text" name="name" placeholder="agent-automation" required>
-        </label>
-        <div class="button-row">
-          <button type="submit">Create API key</button>
-        </div>
-      </form>
+      <h3>Quick actions</h3>
+      <div class="panel stack">
+        <form method="post" action="/settings/api-keys/bot-handoff" class="stack">
+          <label>
+            Bot key name (optional)
+            <input type="text" name="name" placeholder="bot-main">
+          </label>
+          <div class="button-row">
+            <button type="submit">Give this to your bot</button>
+          </div>
+        </form>
 
+        <form method="post" action="/settings/api-keys" class="stack">
+          <label>
+            Manual API key name
+            <input type="text" name="name" placeholder="nightly-agent" required>
+          </label>
+          <div class="button-row">
+            <button type="submit">Create API key</button>
+          </div>
+        </form>
+      </div>
+    </section>
+
+    <section class="actions">
+      <h3>Runtime status</h3>
+      <table>
+        <tbody>
+          <tr><th>Basic auth configured</th><td>{{.Settings.BasicAuthConfigured}}</td></tr>
+          <tr><th>Auth user</th><td>{{.Settings.MaskedAuthUser}}</td></tr>
+          <tr><th>Auth password</th><td>{{.Settings.MaskedAuthPass}}</td></tr>
+          <tr><th>Static API keys</th><td>{{.Settings.StaticAPIKeysCount}}</td></tr>
+          <tr><th>Publisher mode (active)</th><td>{{.Settings.PublisherMode}}</td></tr>
+          <tr><th>Publisher mode (requested)</th><td>{{.Settings.RequestedMode}}</td></tr>
+          <tr><th>LinkedIn configured</th><td>{{.Settings.LinkedInConfigured}}</td></tr>
+          <tr><th>LinkedIn token</th><td>{{.Settings.MaskedLinkedInToken}}</td></tr>
+          <tr><th>LinkedIn author URN</th><td>{{.Settings.MaskedAuthorURN}}</td></tr>
+          <tr><th>Facebook configured</th><td>{{.Settings.FacebookConfigured}}</td></tr>
+          <tr><th>Facebook token</th><td>{{.Settings.MaskedFacebookToken}}</td></tr>
+          <tr><th>Facebook page</th><td>{{.Settings.MaskedFacebookPage}}</td></tr>
+          <tr><th>DB path</th><td><code>{{.Settings.DBPath}}</code></td></tr>
+          <tr><th>Timezone</th><td>{{.Settings.Timezone}}</td></tr>
+          <tr><th>Migration status</th><td>{{.Settings.MigrationStatus}}</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section class="actions">
+      <h3>Existing API keys</h3>
       <table>
         <thead>
           <tr>
@@ -101,5 +136,35 @@
       </table>
     </section>
   </main>
+
+  <script>
+    (function () {
+      const buttons = document.querySelectorAll('[data-copy-target]');
+      buttons.forEach((button) => {
+        button.addEventListener('click', async () => {
+          const targetId = button.getAttribute('data-copy-target');
+          const target = document.getElementById(targetId);
+          if (!target) return;
+
+          let text = '';
+          if (target.tagName === 'TEXTAREA') {
+            text = target.value;
+          } else {
+            text = target.textContent || '';
+          }
+
+          try {
+            await navigator.clipboard.writeText(text.trim());
+            button.textContent = 'Copied';
+            setTimeout(() => { button.textContent = button.dataset.originalLabel || 'Copy'; }, 1200);
+          } catch (_error) {
+            button.textContent = 'Copy failed';
+            setTimeout(() => { button.textContent = button.dataset.originalLabel || 'Copy'; }, 1400);
+          }
+        });
+        button.dataset.originalLabel = button.textContent;
+      });
+    })();
+  </script>
 </body>
 </html>

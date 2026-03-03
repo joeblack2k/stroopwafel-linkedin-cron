@@ -18,6 +18,19 @@ For fully automated deployments, you can preconfigure bot keys with `APP_STATIC_
 3. Click **Create API key**.
 4. Copy the shown key immediately (it is only shown once).
 
+## One-click bot handoff (recommended)
+
+In `/settings` use **Give this to your bot**.
+
+This flow creates a fresh API key and generates a copyable handoff text that includes:
+
+- base URL
+- API key
+- auth header examples
+- minimal endpoint workflow
+
+Use this when onboarding non-technical users or external agents quickly.
+
 ## Revoke an API key
 
 In `/settings`, click **Revoke** next to the key.

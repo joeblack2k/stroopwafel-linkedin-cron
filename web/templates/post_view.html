@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{.Title}} · linkedin-cron</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <header class="topbar">
+    <h1>linkedin-cron</h1>
+    <nav>
+      <a href="/calendar">Calendar</a>
+      <a href="/posts/new?return_to={{.ReturnTo}}">New Post</a>
+      <a href="/posts/bulk">Bulk</a>
+      <a href="/settings/channels">Channels</a>
+      <a href="/settings">Settings</a>
+    </nav>
+  </header>
+
+  <main class="container narrow">
+    <h2>Post #{{.Post.ID}}</h2>
+    {{if .Message}}<div class="notice success">{{.Message}}</div>{{end}}
+    {{if .Error}}<div class="notice error">{{.Error}}</div>{{end}}
+
+    <section class="panel stack">
+      <div><strong>Status:</strong> {{.Post.Status}}</div>
+      <div><strong>Scheduled:</strong> {{if .Post.ScheduledAt}}{{fmtTime .Post.ScheduledAt .Location}}{{else}}not scheduled{{end}}</div>
+      <div><strong>Created:</strong> {{.CreatedAtText}}</div>
+      <div><strong>Updated:</strong> {{.UpdatedAtText}}</div>
+      <div><strong>Media URL:</strong> {{if .MediaURLText}}<a href="{{.MediaURLText}}" target="_blank" rel="noreferrer">{{.MediaURLText}}</a>{{else}}none{{end}}</div>
+      <div>
+        <strong>Channels:</strong>
+        {{if .Channels}}
+          <ul class="compact-list">
+            {{range .Channels}}
+              <li>{{.DisplayName}} ({{.Type}} · {{.Status}})</li>
+            {{end}}
+          </ul>
+        {{else}}
+          <span class="muted">none assigned</span>
+        {{end}}
+      </div>
+      <div>
+        <strong>Post text</strong>
+        <pre class="post-text">{{.Post.Text}}</pre>
+      </div>
+    </section>
+
+    <section class="actions">
+      <div class="button-row wrap">
+        <a class="button" href="/posts/{{.Post.ID}}/edit?return_to={{.ReturnTo}}">edit post</a>
+        <a class="button ghost" href="{{.ReturnTo}}">back</a>
+        {{if ne .Post.Status "sent"}}
+          <form method="post" action="/posts/{{.Post.ID}}/send-now" class="inline">
+            <input type="hidden" name="return_to" value="/posts/{{.Post.ID}}?return_to={{.ReturnTo}}">
+            <button type="submit">send now</button>
+          </form>
+          <form method="post" action="/posts/{{.Post.ID}}/send-and-delete" class="inline">
+            <input type="hidden" name="return_to" value="{{.ReturnTo}}">
+            <button type="submit" class="danger">send and delete</button>
+          </form>
+        {{end}}
+      </div>
+    </section>
+  </main>
+</body>
+</html>
