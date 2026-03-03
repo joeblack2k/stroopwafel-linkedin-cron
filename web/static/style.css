@@ -240,6 +240,26 @@ table {
   margin: 0 0 0.4rem;
 }
 
+.bulk-filters {
+  margin-top: 1rem;
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 0.4rem;
+  padding: 0.8rem;
+  display: grid;
+  gap: 0.7rem;
+}
+
+.bulk-filters h3 {
+  margin: 0;
+}
+
+.filter-grid {
+  display: grid;
+  gap: 0.7rem;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+}
+
 .section-head {
   display: flex;
   justify-content: space-between;

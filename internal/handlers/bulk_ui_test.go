@@ -29,6 +29,8 @@ func TestBulkSetPostChannelsRequiresConfirmation(t *testing.T) {
 	form := url.Values{}
 	form.Add("post_ids", strconv.FormatInt(post.ID, 10))
 	form.Add("channel_ids", strconv.FormatInt(channel.ID, 10))
+	form.Set("status", "scheduled")
+	form.Set("q", "bulk")
 
 	request := httptest.NewRequest(http.MethodPost, "/posts/bulk/channels", strings.NewReader(form.Encode()))
 	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
@@ -51,6 +53,12 @@ func TestBulkSetPostChannelsRequiresConfirmation(t *testing.T) {
 	}
 	if got := location.Query().Get("selected_channel_ids"); got != strconv.FormatInt(channel.ID, 10) {
 		t.Fatalf("expected selected_channel_ids to keep selection, got %q", got)
+	}
+	if got := location.Query().Get("status"); got != "scheduled" {
+		t.Fatalf("expected status filter to be preserved, got %q", got)
+	}
+	if got := location.Query().Get("q"); got != "bulk" {
+		t.Fatalf("expected query filter to be preserved, got %q", got)
 	}
 }
 

@@ -26,7 +26,34 @@
       <div class="notice warn">Retry helper selected {{.FailedPostCount}} failed post(s). Review and submit again.</div>
     {{end}}
 
+    <form method="get" action="/posts/bulk" class="bulk-filters">
+      <h3>Filter visible posts</h3>
+      <div class="filter-grid">
+        <label>
+          <span>Status</span>
+          <select name="status">
+            <option value="" {{if eq .FilterStatus ""}}selected{{end}}>All</option>
+            <option value="draft" {{if eq .FilterStatus "draft"}}selected{{end}}>Draft</option>
+            <option value="scheduled" {{if eq .FilterStatus "scheduled"}}selected{{end}}>Scheduled</option>
+            <option value="failed" {{if eq .FilterStatus "failed"}}selected{{end}}>Failed</option>
+            <option value="sent" {{if eq .FilterStatus "sent"}}selected{{end}}>Sent</option>
+          </select>
+        </label>
+        <label>
+          <span>Search</span>
+          <input type="search" name="q" value="{{.FilterQuery}}" placeholder="Text or post ID">
+        </label>
+      </div>
+      <div class="button-row wrap">
+        <button type="submit">Apply filter</button>
+        <a class="button ghost" href="/posts/bulk">Reset filter</a>
+      </div>
+      <p class="muted">Showing {{.VisiblePostsCount}} of {{.TotalPostsCount}} total posts.</p>
+    </form>
+
     <form id="bulk-form" method="post" action="/posts/bulk/channels" class="stack" data-has-server-selections="{{if .HasServerSelections}}1{{else}}0{{end}}" data-has-failure-prefill="{{if .HasFailurePrefill}}1{{else}}0{{end}}" data-last-action="{{.LastAction}}">
+      <input type="hidden" name="status" value="{{.FilterStatus}}">
+      <input type="hidden" name="q" value="{{.FilterQuery}}">
       <section class="bulk-toolbar">
         <h3>Selection controls</h3>
         <p class="muted">Selections are remembered in your browser. Active action: <strong id="selected-action-label">{{.LastActionLabel}}</strong>.</p>
@@ -46,7 +73,7 @@
 
       <section class="actions">
         <h3>Select posts</h3>
-        <p class="muted">Showing the most recent {{len .Posts}} posts.</p>
+        <p class="muted">Showing {{.VisiblePostsCount}} visible posts (max 200 shown).</p>
         <table>
           <thead>
             <tr>
@@ -70,7 +97,7 @@
               {{end}}
             {{else}}
               <tr>
-                <td colspan="5" class="muted">No posts available</td>
+                <td colspan="5" class="muted">No posts match the current filter.</td>
               </tr>
             {{end}}
           </tbody>

@@ -129,6 +129,7 @@ Security behavior:
 
 Bulk UI highlights:
 
+- `/posts/bulk` supports lightweight server-side filters (`status`, `q`) for large queues.
 - `/posts/bulk` keeps post/channel selections in browser `localStorage` (no backend session state).
 - Bulk actions require an explicit confirmation checkbox and are also validated server-side.
 - Partial failures return with failed post IDs preselected, so retries are one click.

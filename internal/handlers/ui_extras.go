@@ -62,6 +62,10 @@ type BulkPostsPageData struct {
 	FailedPostCount     int
 	LastAction          string
 	LastActionLabel     string
+	FilterStatus        string
+	FilterQuery         string
+	TotalPostsCount     int
+	VisiblePostsCount   int
 }
 
 type bulkRedirectState struct {
@@ -71,6 +75,8 @@ type bulkRedirectState struct {
 	SelectedChannelIDs []int64
 	FailedPostIDs      []int64
 	LastAction         string
+	FilterStatus       string
+	FilterQuery        string
 }
 
 func (a *App) PostHistory(w http.ResponseWriter, r *http.Request) {
@@ -234,6 +240,12 @@ func (a *App) BulkPosts(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "failed to load posts", http.StatusInternalServerError)
 		return
 	}
+	totalPostsCount := len(posts)
+	filterStatus := normalizeBulkPostStatus(r.URL.Query().Get("status"))
+	filterQuery := strings.TrimSpace(r.URL.Query().Get("q"))
+	if filterStatus != "" || filterQuery != "" {
+		posts = filterBulkPosts(posts, filterStatus, filterQuery)
+	}
 	if len(posts) > 200 {
 		posts = posts[:200]
 	}
@@ -269,6 +281,10 @@ func (a *App) BulkPosts(w http.ResponseWriter, r *http.Request) {
 		FailedPostCount:     len(failedPostIDs),
 		LastAction:          lastAction,
 		LastActionLabel:     bulkActionLabel(lastAction),
+		FilterStatus:        filterStatus,
+		FilterQuery:         filterQuery,
+		TotalPostsCount:     totalPostsCount,
+		VisiblePostsCount:   len(posts),
 	}
 	if err := a.Renderer.Render(w, "posts_bulk.html", data); err != nil {
 		http.Error(w, "failed to render bulk page", http.StatusInternalServerError)
@@ -287,6 +303,8 @@ func (a *App) BulkSetPostChannels(w http.ResponseWriter, r *http.Request) {
 		SelectedPostIDs:    postIDs,
 		SelectedChannelIDs: channelIDs,
 		LastAction:         "channels",
+		FilterStatus:       normalizeBulkPostStatus(r.FormValue("status")),
+		FilterQuery:        strings.TrimSpace(r.FormValue("q")),
 	}
 
 	if !isBulkActionConfirmed(r) {
@@ -356,6 +374,8 @@ func (a *App) BulkSendNowPosts(w http.ResponseWriter, r *http.Request) {
 	state := bulkRedirectState{
 		SelectedPostIDs: postIDs,
 		LastAction:      "send-now",
+		FilterStatus:    normalizeBulkPostStatus(r.FormValue("status")),
+		FilterQuery:     strings.TrimSpace(r.FormValue("q")),
 	}
 
 	if !isBulkActionConfirmed(r) {
@@ -417,6 +437,12 @@ func buildBulkRedirectURL(state bulkRedirectState) string {
 	if action := normalizeBulkAction(state.LastAction); action != "" {
 		values.Set("last_action", action)
 	}
+	if status := normalizeBulkPostStatus(state.FilterStatus); status != "" {
+		values.Set("status", status)
+	}
+	if query := strings.TrimSpace(state.FilterQuery); query != "" {
+		values.Set("q", query)
+	}
 
 	path := "/posts/bulk"
 	if query := values.Encode(); query != "" {
@@ -470,6 +496,39 @@ func normalizeBulkAction(value string) string {
 	default:
 		return ""
 	}
+}
+
+func normalizeBulkPostStatus(value string) string {
+	switch model.PostStatus(strings.ToLower(strings.TrimSpace(value))) {
+	case model.StatusDraft, model.StatusScheduled, model.StatusFailed, model.StatusSent:
+		return strings.ToLower(strings.TrimSpace(value))
+	default:
+		return ""
+	}
+}
+
+func filterBulkPosts(posts []model.Post, statusFilter, query string) []model.Post {
+	normalizedStatus := normalizeBulkPostStatus(statusFilter)
+	normalizedQuery := strings.ToLower(strings.TrimSpace(query))
+	if normalizedStatus == "" && normalizedQuery == "" {
+		return posts
+	}
+
+	filtered := make([]model.Post, 0, len(posts))
+	for _, post := range posts {
+		if normalizedStatus != "" && post.Status != model.PostStatus(normalizedStatus) {
+			continue
+		}
+		if normalizedQuery != "" {
+			textMatch := strings.Contains(strings.ToLower(post.Text), normalizedQuery)
+			idMatch := strings.Contains(strconv.FormatInt(post.ID, 10), normalizedQuery)
+			if !textMatch && !idMatch {
+				continue
+			}
+		}
+		filtered = append(filtered, post)
+	}
+	return filtered
 }
 
 func bulkActionLabel(value string) string {

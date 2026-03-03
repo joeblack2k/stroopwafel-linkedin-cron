@@ -72,7 +72,7 @@ Bring the product closer to Postiz by introducing channel management and post-to
    - UI: channel edit page shows audit trail with pagination
    - UI: post history view supports pagination
 
-## Sprint D (in progress)
+## Sprint D (implemented)
 
 1. **Credential UX hardening (phase 1 implemented)**
    - Added explicit secret masking metadata to channel API responses (`secret_preview`, `secret_presence`)
@@ -86,3 +86,7 @@ Bring the product closer to Postiz by introducing channel management and post-to
    - Added selection memory in `/posts/bulk` using lightweight browser `localStorage`
    - Added explicit bulk confirmation guardrail (client + server)
    - Added partial-failure retry helper with failed-post preselection on redirect
+
+4. **Bulk UX polish (phase 4 implemented)**
+   - Added server-side bulk filters (`status`, `q`) on `/posts/bulk`
+   - Preserved filter context across bulk action redirects and retries
