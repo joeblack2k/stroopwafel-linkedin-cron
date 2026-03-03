@@ -119,6 +119,8 @@ Security behavior:
 - `GET /settings`
 - `GET /settings/channels`
 - `POST /settings/channels`
+- `GET /settings/channels/{id}/edit`
+- `POST /settings/channels/{id}`
 - `POST /settings/channels/{id}/test`
 - `POST /settings/channels/{id}/disable`
 - `POST /settings/channels/{id}/enable`
@@ -139,6 +141,7 @@ Security behavior:
 - `GET /api/v1/settings/status`
 - `GET /api/v1/channels`
 - `POST /api/v1/channels`
+- `PUT /api/v1/channels/{id}`
 - `DELETE /api/v1/channels/{id}`
 - `POST /api/v1/channels/{id}/test`
 - `POST /api/v1/channels/{id}/disable`
@@ -177,6 +180,7 @@ Retry policy for publish failures:
 
 - LinkedIn publishing APIs may require specific product access and approvals.
 - Channel tests use a live token probe (`/v2/userinfo`) from `/settings/channels` and `/api/v1/channels/{id}/test`.
+- Channel credentials can be rotated through UI/API update endpoints using explicit secret actions: `keep`, `replace`, `clear`.
 - For development/testing, `dry-run` mode logs intended publish actions and marks success in scheduler flow.
 
 ## Facebook Page Publishing Notes
@@ -187,6 +191,7 @@ Retry policy for publish failures:
 - The publisher posts to `/{page-id}/feed` on the configured Graph API base URL.
 - 429/5xx responses are treated as retryable; other API errors are treated as terminal.
 - Channel tests use a live page probe (`/{page-id}?fields=id,name`) from `/settings/channels` and `/api/v1/channels/{id}/test`.
+- Channel credentials can be rotated through UI/API update endpoints using explicit secret actions: `keep`, `replace`, `clear`.
 
 ## Debian/Ubuntu Deployment (systemd)
 

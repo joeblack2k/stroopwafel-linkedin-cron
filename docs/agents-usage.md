@@ -72,6 +72,28 @@ Send now:
 curl -X POST -H "X-API-Key: lcak_xxx" http://localhost:8080/api/v1/posts/1/send-now
 ```
 
+## Channel credential rotation
+
+Update channel credentials with explicit action semantics for secrets:
+
+- `keep` = leave existing secret unchanged
+- `replace` = set new secret value
+- `clear` = remove stored secret
+
+Example (`replace` LinkedIn token, keep others):
+
+```bash
+curl -X PUT http://localhost:8080/api/v1/channels/1 \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: lcak_xxx" \
+  -d '{
+    "display_name": "agent-linkedin-main",
+    "linkedin_access_token_action": "replace",
+    "linkedin_access_token": "new-token-value",
+    "linkedin_author_urn": "urn:li:organization:123"
+  }'
+```
+
 ## Bulk operations
 
 Bulk send now:

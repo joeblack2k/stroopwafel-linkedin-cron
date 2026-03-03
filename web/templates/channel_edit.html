@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{.Title}} · linkedin-cron</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <header class="topbar">
+    <h1>linkedin-cron</h1>
+    <nav>
+      <a href="/calendar">Calendar</a>
+      <a href="/posts/new">New Post</a>
+      <a href="/posts/bulk">Bulk</a>
+      <a href="/settings">Settings</a>
+      <a href="/settings/channels">Channels</a>
+    </nav>
+  </header>
+
+  <main class="container narrow">
+    <h2>Edit Channel #{{.Channel.ID}} · {{.Channel.DisplayName}}</h2>
+    {{if .Message}}<div class="notice success">{{.Message}}</div>{{end}}
+    {{if .Error}}<div class="notice error">{{.Error}}</div>{{end}}
+
+    <form method="post" action="/settings/channels/{{.Channel.ID}}" class="stack">
+      <label>
+        Display name
+        <input type="text" name="display_name" value="{{.Form.DisplayName}}" required>
+      </label>
+
+      <fieldset>
+        <legend>LinkedIn</legend>
+        <label>
+          LinkedIn token action
+          <select name="linkedin_access_token_action">
+            <option value="keep" {{if eq .Form.LinkedInAccessTokenAction "keep"}}selected{{end}}>keep</option>
+            <option value="replace" {{if eq .Form.LinkedInAccessTokenAction "replace"}}selected{{end}}>replace</option>
+            <option value="clear" {{if eq .Form.LinkedInAccessTokenAction "clear"}}selected{{end}}>clear</option>
+          </select>
+        </label>
+        <label>
+          LinkedIn new access token
+          <input type="password" name="linkedin_access_token" value="{{.Form.LinkedInAccessToken}}" placeholder="Only used when action=replace">
+        </label>
+        <label>
+          LinkedIn author URN
+          <input type="text" name="linkedin_author_urn" value="{{.Form.LinkedInAuthorURN}}" placeholder="urn:li:person:... or urn:li:organization:...">
+        </label>
+        <label>
+          LinkedIn API base URL
+          <input type="url" name="linkedin_api_base_url" value="{{.Form.LinkedInAPIBaseURL}}" placeholder="https://api.linkedin.com">
+        </label>
+      </fieldset>
+
+      <fieldset>
+        <legend>Facebook Page</legend>
+        <label>
+          Facebook token action
+          <select name="facebook_page_access_token_action">
+            <option value="keep" {{if eq .Form.FacebookPageTokenAction "keep"}}selected{{end}}>keep</option>
+            <option value="replace" {{if eq .Form.FacebookPageTokenAction "replace"}}selected{{end}}>replace</option>
+            <option value="clear" {{if eq .Form.FacebookPageTokenAction "clear"}}selected{{end}}>clear</option>
+          </select>
+        </label>
+        <label>
+          Facebook new page token
+          <input type="password" name="facebook_page_access_token" value="{{.Form.FacebookPageToken}}" placeholder="Only used when action=replace">
+        </label>
+        <label>
+          Facebook page ID
+          <input type="text" name="facebook_page_id" value="{{.Form.FacebookPageID}}" placeholder="123456789012345">
+        </label>
+        <label>
+          Facebook API base URL
+          <input type="url" name="facebook_api_base_url" value="{{.Form.FacebookAPIBaseURL}}" placeholder="https://graph.facebook.com/v22.0">
+        </label>
+      </fieldset>
+
+      <div class="button-row">
+        <button type="submit">Save channel</button>
+        <a class="button" href="/settings/channels">Back</a>
+      </div>
+    </form>
+  </main>
+</body>
+</html>

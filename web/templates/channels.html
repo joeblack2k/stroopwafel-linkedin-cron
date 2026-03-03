@@ -145,6 +145,7 @@
                 </td>
                 <td>{{if .LastTestAt}}{{.LastTestAt.Format "2006-01-02 15:04"}}{{else}}never{{end}}</td>
                 <td>
+                  <a class="button" href="/settings/channels/{{.ID}}/edit">Edit</a>
                   <form method="post" action="/settings/channels/{{.ID}}/test" class="inline">
                     <button type="submit">Test</button>
                   </form>

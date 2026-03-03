@@ -101,6 +101,12 @@ func performJSONHandlerRequest(t *testing.T, method, path string, payload any, h
 			request.SetPathValue("id", parts[0])
 		}
 	}
+	if strings.HasPrefix(path, "/api/v1/channels/") {
+		parts := strings.Split(strings.TrimPrefix(path, "/api/v1/channels/"), "/")
+		if len(parts) > 0 && parts[0] != "" {
+			request.SetPathValue("id", parts[0])
+		}
+	}
 	recorder := httptest.NewRecorder()
 	handler(recorder, request)
 	return recorder
@@ -108,5 +114,62 @@ func performJSONHandlerRequest(t *testing.T, method, path string, payload any, h
 
 func ptrTimeForTest(value time.Time) *time.Time {
 	copyValue := value.UTC()
+	return &copyValue
+}
+
+func TestAPIUpdateChannelSecretActions(t *testing.T) {
+	t.Parallel()
+
+	app := newAPIApp(t)
+	created, err := app.Store.CreateChannel(context.Background(), db.ChannelInput{
+		Type:                model.ChannelTypeLinkedIn,
+		DisplayName:         "LinkedIn Main",
+		LinkedInAccessToken: ptrString("token-old"),
+		LinkedInAuthorURN:   ptrString("urn:li:organization:123"),
+	})
+	if err != nil {
+		t.Fatalf("create channel: %v", err)
+	}
+
+	path := "/api/v1/channels/" + strconv.FormatInt(created.ID, 10)
+
+	missingTokenPayload := map[string]any{
+		"linkedin_access_token_action": "replace",
+	}
+	recorder := performJSONHandlerRequest(t, http.MethodPut, path, missingTokenPayload, app.APIUpdateChannel)
+	if recorder.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for replace without token, got %d (%s)", recorder.Code, recorder.Body.String())
+	}
+
+	replacePayload := map[string]any{
+		"display_name":                 "LinkedIn Updated",
+		"linkedin_access_token_action": "replace",
+		"linkedin_access_token":        "token-new",
+		"linkedin_author_urn":          "urn:li:organization:123",
+	}
+	recorder = performJSONHandlerRequest(t, http.MethodPut, path, replacePayload, app.APIUpdateChannel)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected 200 for token replace, got %d (%s)", recorder.Code, recorder.Body.String())
+	}
+
+	clearPayload := map[string]any{
+		"linkedin_access_token_action": "clear",
+	}
+	recorder = performJSONHandlerRequest(t, http.MethodPut, path, clearPayload, app.APIUpdateChannel)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected 200 for token clear, got %d (%s)", recorder.Code, recorder.Body.String())
+	}
+	var response map[string]any
+	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
+		t.Fatalf("decode update response: %v", err)
+	}
+	configured, _ := response["linkedin_configured"].(bool)
+	if configured {
+		t.Fatalf("expected linkedin_configured=false after clear")
+	}
+}
+
+func ptrString(value string) *string {
+	copyValue := value
 	return &copyValue
 }

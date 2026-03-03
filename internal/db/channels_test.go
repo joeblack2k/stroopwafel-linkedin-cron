@@ -85,3 +85,87 @@ func TestChannelCRUDAndPostLinks(t *testing.T) {
 func ptrString(value string) *string {
 	return &value
 }
+
+func TestUpdateChannelSecretActions(t *testing.T) {
+	t.Parallel()
+
+	databasePath := filepath.Join(t.TempDir(), "channels-update.db")
+	database, err := Open(databasePath)
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	t.Cleanup(func() { _ = database.Close() })
+
+	if _, err := Migrate(context.Background(), database); err != nil {
+		t.Fatalf("migrate db: %v", err)
+	}
+
+	store := NewStore(database)
+	channel, err := store.CreateChannel(context.Background(), ChannelInput{
+		Type:                model.ChannelTypeLinkedIn,
+		DisplayName:         "LinkedIn Main",
+		LinkedInAccessToken: ptrString("token-old"),
+		LinkedInAuthorURN:   ptrString("urn:li:organization:123"),
+	})
+	if err != nil {
+		t.Fatalf("create channel: %v", err)
+	}
+
+	updated, err := store.UpdateChannel(context.Background(), channel.ID, ChannelUpdateInput{
+		DisplayName:               ptrString("LinkedIn Renamed"),
+		LinkedInAuthorURN:         ptrString("urn:li:organization:456"),
+		LinkedInAccessTokenAction: SecretActionKeep,
+		FacebookPageTokenAction:   SecretActionKeep,
+		LinkedInAccessToken:       ptrString(""),
+		FacebookPageToken:         ptrString(""),
+		LinkedInAPIBaseURL:        ptrString(""),
+		FacebookAPIBaseURL:        ptrString(""),
+		FacebookPageID:            ptrString(""),
+	})
+	if err != nil {
+		t.Fatalf("update keep action: %v", err)
+	}
+	if updated.DisplayName != "LinkedIn Renamed" {
+		t.Fatalf("expected renamed display name, got %q", updated.DisplayName)
+	}
+	if got := derefNullableString(updated.LinkedInAccessToken); got != "token-old" {
+		t.Fatalf("expected token-old to be kept, got %q", got)
+	}
+
+	updated, err = store.UpdateChannel(context.Background(), channel.ID, ChannelUpdateInput{
+		LinkedInAccessTokenAction: SecretActionReplace,
+		LinkedInAccessToken:       ptrString("token-new"),
+		FacebookPageTokenAction:   SecretActionKeep,
+	})
+	if err != nil {
+		t.Fatalf("update replace action: %v", err)
+	}
+	if got := derefNullableString(updated.LinkedInAccessToken); got != "token-new" {
+		t.Fatalf("expected token-new, got %q", got)
+	}
+
+	updated, err = store.UpdateChannel(context.Background(), channel.ID, ChannelUpdateInput{
+		LinkedInAccessTokenAction: SecretActionClear,
+		FacebookPageTokenAction:   SecretActionKeep,
+	})
+	if err != nil {
+		t.Fatalf("update clear action: %v", err)
+	}
+	if updated.LinkedInAccessToken != nil {
+		t.Fatalf("expected linkedin token to be cleared")
+	}
+	if updated.Status != model.ChannelStatusError {
+		t.Fatalf("expected channel status error after clearing required token, got %s", updated.Status)
+	}
+	if updated.LastError == nil || *updated.LastError == "" {
+		t.Fatalf("expected last_error after clearing required token")
+	}
+
+	_, err = store.UpdateChannel(context.Background(), channel.ID, ChannelUpdateInput{
+		LinkedInAccessTokenAction: SecretActionReplace,
+		FacebookPageTokenAction:   SecretActionKeep,
+	})
+	if err == nil {
+		t.Fatal("expected error when replacing token without a value")
+	}
+}
