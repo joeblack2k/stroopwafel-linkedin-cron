@@ -195,6 +195,34 @@ Response shape:
 - `items`: list of attempts
 - `pagination`: `{limit, offset, total, has_next, has_prev}`
 
+Attempt items include proof fields:
+
+- `error_category`
+- `permalink`
+- `screenshot_url`
+
+Attach/replace screenshot URL for an attempt:
+
+```bash
+curl -X POST http://localhost:8080/api/v1/posts/1/attempts/10/screenshot \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: lcak_xxx" \
+  -d '{"screenshot_url":"https://example.com/proof/10.png"}'
+```
+
+One-click retry for a failed attempt after fixing credentials/scopes:
+
+```bash
+curl -X POST -H "X-API-Key: lcak_xxx" http://localhost:8080/api/v1/posts/1/attempts/10/retry
+```
+
+Weekly snapshot (basic planning + delivery metrics):
+
+```bash
+curl -H "X-API-Key: lcak_xxx" \
+  "http://localhost:8080/api/v1/analytics/weekly-snapshot?start=2026-03-01T00:00:00Z"
+```
+
 ## Channel audit trail
 
 Every successful channel update writes an audit event.

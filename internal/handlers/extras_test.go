@@ -576,3 +576,228 @@ func TestAPICreateBotHandoff(t *testing.T) {
 		t.Fatalf("expected handoff instructions to mention posts endpoint")
 	}
 }
+
+func TestAPIListPostAttemptsIncludesProofFields(t *testing.T) {
+	t.Parallel()
+
+	app := newAPIApp(t)
+	channel := mustCreateDryRunChannel(t, app.Store)
+
+	now := time.Now().UTC().Add(-1 * time.Minute)
+	post, err := app.Store.CreatePost(context.Background(), db.PostInput{
+		Text:        "proof payload",
+		Status:      model.StatusScheduled,
+		ScheduledAt: &now,
+	})
+	if err != nil {
+		t.Fatalf("create post: %v", err)
+	}
+	if err := app.Store.ReplacePostChannels(context.Background(), post.ID, []int64{channel.ID}); err != nil {
+		t.Fatalf("assign channels: %v", err)
+	}
+
+	errorText := "rate limited"
+	errorCategory := "rate_limited"
+	externalID := "urn:li:share:123"
+	permalink := "https://www.linkedin.com/feed/update/urn:li:share:123/"
+	screenshot := "https://example.com/screenshots/attempt-1.png"
+	_, err = app.Store.InsertPublishAttempt(context.Background(), db.PublishAttemptInput{
+		PostID:        post.ID,
+		ChannelID:     channel.ID,
+		AttemptNo:     1,
+		AttemptedAt:   time.Now().UTC(),
+		Status:        model.PublishAttemptStatusFailed,
+		Error:         &errorText,
+		ErrorCategory: &errorCategory,
+		ExternalID:    &externalID,
+		Permalink:     &permalink,
+		ScreenshotURL: &screenshot,
+	})
+	if err != nil {
+		t.Fatalf("insert attempt: %v", err)
+	}
+
+	path := "/api/v1/posts/" + strconv.FormatInt(post.ID, 10) + "/attempts"
+	request := httptest.NewRequest(http.MethodGet, path, nil)
+	request.SetPathValue("id", strconv.FormatInt(post.ID, 10))
+	recorder := httptest.NewRecorder()
+	app.APIListPostAttempts(recorder, request)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d (%s)", recorder.Code, recorder.Body.String())
+	}
+
+	var payload struct {
+		Items []map[string]any `json:"items"`
+	}
+	if err := json.Unmarshal(recorder.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("decode payload: %v", err)
+	}
+	if len(payload.Items) != 1 {
+		t.Fatalf("expected one item, got %d", len(payload.Items))
+	}
+	item := payload.Items[0]
+	if item["error_category"] != "rate_limited" {
+		t.Fatalf("expected error_category=rate_limited, got %#v", item["error_category"])
+	}
+	if item["permalink"] == nil || item["permalink"].(string) == "" {
+		t.Fatalf("expected permalink in response")
+	}
+	if item["screenshot_url"] == nil || item["screenshot_url"].(string) == "" {
+		t.Fatalf("expected screenshot_url in response")
+	}
+}
+
+func TestAPISetPostAttemptScreenshot(t *testing.T) {
+	t.Parallel()
+
+	app := newAPIApp(t)
+	channel := mustCreateDryRunChannel(t, app.Store)
+	post, err := app.Store.CreatePost(context.Background(), db.PostInput{Text: "shot", Status: model.StatusScheduled, ScheduledAt: ptrTimeForTest(time.Now().UTC())})
+	if err != nil {
+		t.Fatalf("create post: %v", err)
+	}
+	if err := app.Store.ReplacePostChannels(context.Background(), post.ID, []int64{channel.ID}); err != nil {
+		t.Fatalf("assign channels: %v", err)
+	}
+	attempt, err := app.Store.InsertPublishAttempt(context.Background(), db.PublishAttemptInput{
+		PostID:      post.ID,
+		ChannelID:   channel.ID,
+		AttemptNo:   1,
+		AttemptedAt: time.Now().UTC(),
+		Status:      model.PublishAttemptStatusFailed,
+	})
+	if err != nil {
+		t.Fatalf("insert attempt: %v", err)
+	}
+
+	body, _ := json.Marshal(map[string]any{"screenshot_url": "https://example.com/new-shot.png"})
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/posts/x/attempts/y/screenshot", bytes.NewReader(body))
+	request.Header.Set("Content-Type", "application/json")
+	request.SetPathValue("id", strconv.FormatInt(post.ID, 10))
+	request.SetPathValue("attempt_id", strconv.FormatInt(attempt.ID, 10))
+	recorder := httptest.NewRecorder()
+	app.APISetPostAttemptScreenshot(recorder, request)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d (%s)", recorder.Code, recorder.Body.String())
+	}
+
+	updated, err := app.Store.GetPublishAttempt(context.Background(), attempt.ID)
+	if err != nil {
+		t.Fatalf("reload attempt: %v", err)
+	}
+	if updated.ScreenshotURL == nil || *updated.ScreenshotURL != "https://example.com/new-shot.png" {
+		t.Fatalf("expected updated screenshot url, got %#v", updated.ScreenshotURL)
+	}
+}
+
+func TestAPICheckPostGuardrailsReturnsWarnings(t *testing.T) {
+	t.Parallel()
+
+	app := newAPIApp(t)
+	channel := mustCreateDryRunChannel(t, app.Store)
+
+	scheduledAt := time.Date(2026, 3, 3, 13, 0, 0, 0, time.UTC)
+	post, err := app.Store.CreatePost(context.Background(), db.PostInput{
+		Text:        "scheduled existing",
+		Status:      model.StatusScheduled,
+		ScheduledAt: &scheduledAt,
+	})
+	if err != nil {
+		t.Fatalf("create existing post: %v", err)
+	}
+	if err := app.Store.ReplacePostChannels(context.Background(), post.ID, []int64{channel.ID}); err != nil {
+		t.Fatalf("assign channels: %v", err)
+	}
+
+	payload := map[string]any{
+		"scheduled_at": scheduledAt.Format(time.RFC3339),
+		"channel_ids":  []int64{channel.ID},
+	}
+	recorder := performJSONHandlerRequest(t, http.MethodPost, "/api/v1/posts/guardrails", payload, app.APICheckPostGuardrails)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d (%s)", recorder.Code, recorder.Body.String())
+	}
+
+	var response struct {
+		Warnings []map[string]any `json:"warnings"`
+	}
+	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if len(response.Warnings) == 0 {
+		t.Fatalf("expected at least one warning")
+	}
+}
+
+func TestAPICreatePostRejectsChannelRuleViolation(t *testing.T) {
+	t.Parallel()
+
+	app := newAPIApp(t)
+	channel := mustCreateDryRunChannel(t, app.Store)
+	limit := 10
+	if _, err := app.Store.UpsertChannelRule(context.Background(), channel.ID, db.ChannelRuleInput{MaxTextLength: &limit}); err != nil {
+		t.Fatalf("upsert channel rule: %v", err)
+	}
+
+	payload := map[string]any{
+		"text":         "this is definitely longer than ten",
+		"status":       "scheduled",
+		"scheduled_at": time.Now().UTC().Add(10 * time.Minute).Format(time.RFC3339),
+		"channel_ids":  []int64{channel.ID},
+	}
+	recorder := performJSONHandlerRequest(t, http.MethodPost, "/api/v1/posts", payload, app.APICreatePost)
+	if recorder.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d (%s)", recorder.Code, recorder.Body.String())
+	}
+	if !strings.Contains(recorder.Body.String(), "channel rule violation") {
+		t.Fatalf("expected channel rule violation message, got %s", recorder.Body.String())
+	}
+}
+
+func TestAPIWeeklySnapshot(t *testing.T) {
+	t.Parallel()
+
+	app := newAPIApp(t)
+	channel := mustCreateDryRunChannel(t, app.Store)
+	start := time.Date(2026, 3, 1, 0, 0, 0, 0, time.UTC)
+	postTime := start.Add(2 * time.Hour)
+	post, err := app.Store.CreatePost(context.Background(), db.PostInput{
+		Text:        "snapshot post",
+		Status:      model.StatusScheduled,
+		ScheduledAt: &postTime,
+	})
+	if err != nil {
+		t.Fatalf("create post: %v", err)
+	}
+	if err := app.Store.ReplacePostChannels(context.Background(), post.ID, []int64{channel.ID}); err != nil {
+		t.Fatalf("assign channels: %v", err)
+	}
+
+	if _, err := app.Store.InsertPublishAttempt(context.Background(), db.PublishAttemptInput{
+		PostID:      post.ID,
+		ChannelID:   channel.ID,
+		AttemptNo:   1,
+		AttemptedAt: start.Add(3 * time.Hour),
+		Status:      model.PublishAttemptStatusSent,
+	}); err != nil {
+		t.Fatalf("insert attempt: %v", err)
+	}
+
+	request := httptest.NewRequest(http.MethodGet, "/api/v1/analytics/weekly-snapshot?start="+start.Format(time.RFC3339), nil)
+	recorder := httptest.NewRecorder()
+	app.APIWeeklySnapshot(recorder, request)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d (%s)", recorder.Code, recorder.Body.String())
+	}
+
+	var response map[string]any
+	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if int(response["planned_posts"].(float64)) < 1 {
+		t.Fatalf("expected planned_posts >= 1, got %#v", response["planned_posts"])
+	}
+	if int(response["published_attempts"].(float64)) < 1 {
+		t.Fatalf("expected published_attempts >= 1, got %#v", response["published_attempts"])
+	}
+}

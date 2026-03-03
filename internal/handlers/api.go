@@ -107,6 +107,11 @@ func (a *App) APICreatePost(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if validationErr := a.validatePostAgainstChannelRules(r.Context(), input.Text, channelIDs); validationErr != nil {
+		writeAPIError(w, http.StatusBadRequest, validationErr.Error())
+		return
+	}
+
 	created, err := a.Store.CreatePost(r.Context(), input)
 	if err != nil {
 		writeAPIError(w, http.StatusInternalServerError, "failed to create post")
@@ -124,7 +129,15 @@ func (a *App) APICreatePost(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, http.StatusInternalServerError, "failed to load post channels")
 		return
 	}
-	writeJSON(w, http.StatusCreated, mapped)
+
+	warnings := make([]scheduleWarning, 0)
+	if input.Status == model.StatusScheduled && input.ScheduledAt != nil {
+		guardrails, warnErr := a.computeSchedulingWarnings(r.Context(), *input.ScheduledAt, channelIDs, created.ID)
+		if warnErr == nil {
+			warnings = guardrails
+		}
+	}
+	writeJSON(w, http.StatusCreated, postMutationResponse{Post: mapped, Warnings: warnings})
 }
 
 func (a *App) APIUpdatePost(w http.ResponseWriter, r *http.Request) {
@@ -143,6 +156,11 @@ func (a *App) APIUpdatePost(w http.ResponseWriter, r *http.Request) {
 	input, channelIDs, err := parsePostPayload(payload)
 	if err != nil {
 		writeAPIError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	if validationErr := a.validatePostAgainstChannelRules(r.Context(), input.Text, channelIDs); validationErr != nil {
+		writeAPIError(w, http.StatusBadRequest, validationErr.Error())
 		return
 	}
 
@@ -166,7 +184,15 @@ func (a *App) APIUpdatePost(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, http.StatusInternalServerError, "failed to load post channels")
 		return
 	}
-	writeJSON(w, http.StatusOK, mapped)
+
+	warnings := make([]scheduleWarning, 0)
+	if input.Status == model.StatusScheduled && input.ScheduledAt != nil {
+		guardrails, warnErr := a.computeSchedulingWarnings(r.Context(), *input.ScheduledAt, channelIDs, updated.ID)
+		if warnErr == nil {
+			warnings = guardrails
+		}
+	}
+	writeJSON(w, http.StatusOK, postMutationResponse{Post: mapped, Warnings: warnings})
 }
 
 func (a *App) APIDeletePost(w http.ResponseWriter, r *http.Request) {
@@ -286,6 +312,16 @@ func (a *App) APIReschedulePost(w http.ResponseWriter, r *http.Request) {
 		status = model.StatusScheduled
 	}
 
+	channelIDs, channelErr := a.Store.ListPostChannelIDs(r.Context(), post.ID)
+	if channelErr != nil {
+		writeAPIError(w, http.StatusInternalServerError, "failed to load post channels")
+		return
+	}
+	if validationErr := a.validatePostAgainstChannelRules(r.Context(), post.Text, channelIDs); validationErr != nil {
+		writeAPIError(w, http.StatusBadRequest, validationErr.Error())
+		return
+	}
+
 	updated, err := a.Store.UpdatePost(r.Context(), id, db.PostInput{
 		ScheduledAt: scheduledAt,
 		Text:        post.Text,
@@ -306,7 +342,12 @@ func (a *App) APIReschedulePost(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, http.StatusInternalServerError, "failed to load post channels")
 		return
 	}
-	writeJSON(w, http.StatusOK, mapped)
+
+	warnings, warnErr := a.computeSchedulingWarnings(r.Context(), *scheduledAt, channelIDs, updated.ID)
+	if warnErr != nil {
+		warnings = nil
+	}
+	writeJSON(w, http.StatusOK, postMutationResponse{Post: mapped, Warnings: warnings})
 }
 
 func (a *App) APICreateBotHandoff(w http.ResponseWriter, r *http.Request) {

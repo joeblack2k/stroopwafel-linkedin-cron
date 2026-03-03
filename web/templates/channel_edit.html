@@ -85,6 +85,27 @@
     </form>
 
     <section class="actions">
+      <h3>Channel Rules</h3>
+      <form method="post" action="/settings/channels/{{.Channel.ID}}/rules" class="stack panel">
+        <label>
+          Max text length (optional)
+          <input type="number" min="1" name="max_text_length" value="{{.RuleForm.MaxTextLength}}" placeholder="e.g. 2500">
+        </label>
+        <label>
+          Max hashtags (optional)
+          <input type="number" min="1" name="max_hashtags" value="{{.RuleForm.MaxHashtags}}" placeholder="e.g. 5">
+        </label>
+        <label>
+          Required phrase (optional)
+          <input type="text" name="required_phrase" value="{{.RuleForm.RequiredPhrase}}" placeholder="e.g. Boek een gratis intake">
+        </label>
+        <div class="button-row">
+          <button type="submit">Save rules</button>
+        </div>
+      </form>
+    </section>
+
+    <section class="actions">
       <div class="section-head">
         <h3>Audit trail</h3>
         <p class="muted">Total events: {{.AuditTotal}}</p>

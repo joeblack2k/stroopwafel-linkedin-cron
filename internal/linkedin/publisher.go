@@ -44,23 +44,23 @@ func (p *Publisher) Configured() bool {
 
 func (p *Publisher) Probe(ctx context.Context) error {
 	if !p.Configured() {
-		return &publisher.PublishError{Err: fmt.Errorf("linkedin publisher is not configured"), Retryable: false}
+		return &publisher.PublishError{Err: fmt.Errorf("linkedin publisher is not configured"), Retryable: false, Category: publisher.ErrorCategoryAuthExpired}
 	}
 	if !strings.HasPrefix(p.authorURN, "urn:li:") {
-		return &publisher.PublishError{Err: errors.New("linkedin_author_urn must start with urn:li:"), Retryable: false}
+		return &publisher.PublishError{Err: errors.New("linkedin_author_urn must start with urn:li:"), Retryable: false, Category: publisher.ErrorCategoryValidation}
 	}
 
 	endpoint := p.baseURL + "/v2/userinfo"
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
-		return &publisher.PublishError{Err: fmt.Errorf("build linkedin probe request: %w", err), Retryable: true}
+		return &publisher.PublishError{Err: fmt.Errorf("build linkedin probe request: %w", err), Retryable: true, Category: publisher.ErrorCategoryUpstream}
 	}
 	request.Header.Set("Authorization", "Bearer "+p.token)
 	request.Header.Set("Accept", "application/json")
 
 	response, err := p.httpClient.Do(request)
 	if err != nil {
-		return &publisher.PublishError{Err: fmt.Errorf("linkedin probe request failed: %w", err), Retryable: true}
+		return &publisher.PublishError{Err: fmt.Errorf("linkedin probe request failed: %w", err), Retryable: true, Category: publisher.ErrorCategoryUpstream}
 	}
 	defer response.Body.Close()
 
@@ -76,12 +76,12 @@ func (p *Publisher) Probe(ctx context.Context) error {
 	if bodyText != "" {
 		errMessage += ": " + bodyText
 	}
-	return &publisher.PublishError{Err: errors.New(errMessage), Retryable: retryable}
+	return &publisher.PublishError{Err: errors.New(errMessage), Retryable: retryable, Category: categorizeLinkedInStatus(response.StatusCode)}
 }
 
 func (p *Publisher) Publish(ctx context.Context, post model.Post) (publisher.PublishResult, error) {
 	if !p.Configured() {
-		return publisher.PublishResult{}, &publisher.PublishError{Err: fmt.Errorf("linkedin publisher is not configured"), Retryable: false}
+		return publisher.PublishResult{}, &publisher.PublishError{Err: fmt.Errorf("linkedin publisher is not configured"), Retryable: false, Category: publisher.ErrorCategoryAuthExpired}
 	}
 
 	body := map[string]any{
@@ -114,13 +114,13 @@ func (p *Publisher) Publish(ctx context.Context, post model.Post) (publisher.Pub
 
 	payload, err := json.Marshal(body)
 	if err != nil {
-		return publisher.PublishResult{}, &publisher.PublishError{Err: fmt.Errorf("marshal linkedin payload: %w", err), Retryable: false}
+		return publisher.PublishResult{}, &publisher.PublishError{Err: fmt.Errorf("marshal linkedin payload: %w", err), Retryable: false, Category: publisher.ErrorCategoryValidation}
 	}
 
 	endpoint := p.baseURL + "/v2/ugcPosts"
 	request, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(payload))
 	if err != nil {
-		return publisher.PublishResult{}, &publisher.PublishError{Err: fmt.Errorf("build linkedin request: %w", err), Retryable: true}
+		return publisher.PublishResult{}, &publisher.PublishError{Err: fmt.Errorf("build linkedin request: %w", err), Retryable: true, Category: publisher.ErrorCategoryUpstream}
 	}
 	request.Header.Set("Authorization", "Bearer "+p.token)
 	request.Header.Set("Content-Type", "application/json")
@@ -128,7 +128,7 @@ func (p *Publisher) Publish(ctx context.Context, post model.Post) (publisher.Pub
 
 	response, err := p.httpClient.Do(request)
 	if err != nil {
-		return publisher.PublishResult{}, &publisher.PublishError{Err: fmt.Errorf("linkedin request failed: %w", err), Retryable: true}
+		return publisher.PublishResult{}, &publisher.PublishError{Err: fmt.Errorf("linkedin request failed: %w", err), Retryable: true, Category: publisher.ErrorCategoryUpstream}
 	}
 	defer response.Body.Close()
 
@@ -140,6 +140,7 @@ func (p *Publisher) Publish(ctx context.Context, post model.Post) (publisher.Pub
 		if resourceID == "" {
 			resourceID = "linkedin-posted"
 		}
+		permalink := toLinkedInPermalink(resourceID)
 		p.logger.LogAttrs(
 			ctx,
 			slog.LevelInfo,
@@ -148,8 +149,9 @@ func (p *Publisher) Publish(ctx context.Context, post model.Post) (publisher.Pub
 			slog.String("publisher", "linkedin"),
 			slog.Int64("post_id", post.ID),
 			slog.String("external_id", resourceID),
+			slog.String("permalink", permalink),
 		)
-		return publisher.PublishResult{ExternalID: resourceID, Message: "linkedin publish succeeded"}, nil
+		return publisher.PublishResult{ExternalID: resourceID, Permalink: permalink, Message: "linkedin publish succeeded"}, nil
 	}
 
 	retryable := response.StatusCode == http.StatusTooManyRequests || response.StatusCode >= 500
@@ -158,5 +160,33 @@ func (p *Publisher) Publish(ctx context.Context, post model.Post) (publisher.Pub
 		errMessage += ": " + bodyText
 	}
 
-	return publisher.PublishResult{}, &publisher.PublishError{Err: errors.New(errMessage), Retryable: retryable}
+	return publisher.PublishResult{}, &publisher.PublishError{Err: errors.New(errMessage), Retryable: retryable, Category: categorizeLinkedInStatus(response.StatusCode)}
+}
+
+func categorizeLinkedInStatus(statusCode int) string {
+	switch statusCode {
+	case http.StatusUnauthorized:
+		return publisher.ErrorCategoryAuthExpired
+	case http.StatusForbidden:
+		return publisher.ErrorCategoryScopeMissing
+	case http.StatusTooManyRequests:
+		return publisher.ErrorCategoryRateLimited
+	case http.StatusBadRequest, http.StatusUnprocessableEntity:
+		return publisher.ErrorCategoryValidation
+	}
+	if statusCode >= 500 {
+		return publisher.ErrorCategoryUpstream
+	}
+	return publisher.ErrorCategoryUnknown
+}
+
+func toLinkedInPermalink(externalID string) string {
+	trimmed := strings.TrimSpace(externalID)
+	if trimmed == "" {
+		return ""
+	}
+	if strings.HasPrefix(trimmed, "urn:li:") {
+		return "https://www.linkedin.com/feed/update/" + trimmed + "/"
+	}
+	return "https://www.linkedin.com/feed/"
 }

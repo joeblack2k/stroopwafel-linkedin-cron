@@ -12,17 +12,20 @@ import (
 )
 
 type attemptResponse struct {
-	ID          int64   `json:"id"`
-	PostID      int64   `json:"post_id"`
-	ChannelID   int64   `json:"channel_id"`
-	ChannelName string  `json:"channel_name"`
-	ChannelType string  `json:"channel_type"`
-	AttemptNo   int     `json:"attempt_no"`
-	AttemptedAt string  `json:"attempted_at"`
-	Status      string  `json:"status"`
-	Error       *string `json:"error,omitempty"`
-	RetryAt     *string `json:"retry_at,omitempty"`
-	ExternalID  *string `json:"external_id,omitempty"`
+	ID            int64   `json:"id"`
+	PostID        int64   `json:"post_id"`
+	ChannelID     int64   `json:"channel_id"`
+	ChannelName   string  `json:"channel_name"`
+	ChannelType   string  `json:"channel_type"`
+	AttemptNo     int     `json:"attempt_no"`
+	AttemptedAt   string  `json:"attempted_at"`
+	Status        string  `json:"status"`
+	Error         *string `json:"error,omitempty"`
+	ErrorCategory *string `json:"error_category,omitempty"`
+	RetryAt       *string `json:"retry_at,omitempty"`
+	ExternalID    *string `json:"external_id,omitempty"`
+	Permalink     *string `json:"permalink,omitempty"`
+	ScreenshotURL *string `json:"screenshot_url,omitempty"`
 }
 
 type attemptsListResponse struct {
@@ -44,6 +47,10 @@ type bulkOperationResult struct {
 	Succeeded int      `json:"succeeded"`
 	Failed    int      `json:"failed"`
 	Errors    []string `json:"errors,omitempty"`
+}
+
+type attemptScreenshotPayload struct {
+	ScreenshotURL string `json:"screenshot_url"`
 }
 
 func (a *App) APIListPostAttempts(w http.ResponseWriter, r *http.Request) {
@@ -108,16 +115,19 @@ func (a *App) APIListPostAttempts(w http.ResponseWriter, r *http.Request) {
 	for _, attempt := range attempts {
 		channel := channelMap[attempt.ChannelID]
 		item := attemptResponse{
-			ID:          attempt.ID,
-			PostID:      attempt.PostID,
-			ChannelID:   attempt.ChannelID,
-			ChannelName: channel.DisplayName,
-			ChannelType: string(channel.Type),
-			AttemptNo:   attempt.AttemptNo,
-			AttemptedAt: attempt.AttemptedAt.UTC().Format(time.RFC3339),
-			Status:      attempt.Status,
-			Error:       attempt.Error,
-			ExternalID:  attempt.ExternalID,
+			ID:            attempt.ID,
+			PostID:        attempt.PostID,
+			ChannelID:     attempt.ChannelID,
+			ChannelName:   channel.DisplayName,
+			ChannelType:   string(channel.Type),
+			AttemptNo:     attempt.AttemptNo,
+			AttemptedAt:   attempt.AttemptedAt.UTC().Format(time.RFC3339),
+			Status:        attempt.Status,
+			Error:         attempt.Error,
+			ErrorCategory: attempt.ErrorCategory,
+			ExternalID:    attempt.ExternalID,
+			Permalink:     attempt.Permalink,
+			ScreenshotURL: attempt.ScreenshotURL,
 		}
 		if item.ChannelName == "" {
 			item.ChannelName = fmt.Sprintf("channel-%d", attempt.ChannelID)
@@ -205,4 +215,127 @@ func (a *App) APIBulkSetPostChannels(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, result)
+}
+
+func (a *App) APISetPostAttemptScreenshot(w http.ResponseWriter, r *http.Request) {
+	postID, err := parseID(r.PathValue("id"))
+	if err != nil {
+		writeAPIError(w, http.StatusBadRequest, "invalid post id")
+		return
+	}
+	attemptID, err := parseID(r.PathValue("attempt_id"))
+	if err != nil {
+		writeAPIError(w, http.StatusBadRequest, "invalid attempt id")
+		return
+	}
+
+	attempt, err := a.Store.GetPublishAttempt(r.Context(), attemptID)
+	if err != nil {
+		if errors.Is(err, db.ErrNotFound) {
+			writeAPIError(w, http.StatusNotFound, "attempt not found")
+			return
+		}
+		writeAPIError(w, http.StatusInternalServerError, "failed to load attempt")
+		return
+	}
+	if attempt.PostID != postID {
+		writeAPIError(w, http.StatusNotFound, "attempt not found for post")
+		return
+	}
+
+	var payload attemptScreenshotPayload
+	if err := readJSONBody(r, &payload); err != nil {
+		writeAPIError(w, http.StatusBadRequest, "invalid JSON payload")
+		return
+	}
+
+	updated, err := a.Store.SetPublishAttemptScreenshot(r.Context(), attemptID, payload.ScreenshotURL)
+	if err != nil {
+		writeAPIError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	channel, channelErr := a.Store.GetChannel(r.Context(), updated.ChannelID)
+	if channelErr != nil {
+		channel = model.Channel{ID: updated.ChannelID, DisplayName: fmt.Sprintf("channel-%d", updated.ChannelID), Type: model.ChannelTypeDryRun}
+	}
+
+	response := attemptResponse{
+		ID:            updated.ID,
+		PostID:        updated.PostID,
+		ChannelID:     updated.ChannelID,
+		ChannelName:   channel.DisplayName,
+		ChannelType:   string(channel.Type),
+		AttemptNo:     updated.AttemptNo,
+		AttemptedAt:   updated.AttemptedAt.UTC().Format(time.RFC3339),
+		Status:        updated.Status,
+		Error:         updated.Error,
+		ErrorCategory: updated.ErrorCategory,
+		RetryAt:       nil,
+		ExternalID:    updated.ExternalID,
+		Permalink:     updated.Permalink,
+		ScreenshotURL: updated.ScreenshotURL,
+	}
+	if updated.RetryAt != nil {
+		value := updated.RetryAt.UTC().Format(time.RFC3339)
+		response.RetryAt = &value
+	}
+	if strings.TrimSpace(response.ChannelName) == "" {
+		response.ChannelName = fmt.Sprintf("channel-%d", updated.ChannelID)
+	}
+
+	writeJSON(w, http.StatusOK, response)
+}
+
+func (a *App) APIRetryPostAttempt(w http.ResponseWriter, r *http.Request) {
+	postID, err := parseID(r.PathValue("id"))
+	if err != nil {
+		writeAPIError(w, http.StatusBadRequest, "invalid post id")
+		return
+	}
+	attemptID, err := parseID(r.PathValue("attempt_id"))
+	if err != nil {
+		writeAPIError(w, http.StatusBadRequest, "invalid attempt id")
+		return
+	}
+
+	attempt, err := a.Store.GetPublishAttempt(r.Context(), attemptID)
+	if err != nil {
+		if errors.Is(err, db.ErrNotFound) {
+			writeAPIError(w, http.StatusNotFound, "attempt not found")
+			return
+		}
+		writeAPIError(w, http.StatusInternalServerError, "failed to load attempt")
+		return
+	}
+	if attempt.PostID != postID {
+		writeAPIError(w, http.StatusNotFound, "attempt not found for post")
+		return
+	}
+	if attempt.Status == model.PublishAttemptStatusSent {
+		writeAPIError(w, http.StatusBadRequest, "cannot retry a successful attempt")
+		return
+	}
+
+	if err := a.Scheduler.SendNow(r.Context(), postID); err != nil {
+		writeAPIError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	post, err := a.Store.GetPost(r.Context(), postID)
+	if err != nil {
+		writeAPIError(w, http.StatusInternalServerError, "retry triggered but failed to reload post")
+		return
+	}
+	mapped, mapErr := a.mapPostResponse(r.Context(), post)
+	if mapErr != nil {
+		writeAPIError(w, http.StatusInternalServerError, "failed to load post channels")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"message":    "retry triggered",
+		"attempt_id": attemptID,
+		"post":       mapped,
+	})
 }

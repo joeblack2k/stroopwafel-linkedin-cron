@@ -37,6 +37,7 @@ func (p *DryRunPublisher) Publish(ctx context.Context, post model.Post) (Publish
 
 	return PublishResult{
 		ExternalID: fmt.Sprintf("dry-run-%d", post.ID),
+		Permalink:  fmt.Sprintf("/posts/%d", post.ID),
 		Message:    "dry run successful",
 	}, nil
 }

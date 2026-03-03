@@ -57,7 +57,7 @@ func (p *Publisher) Configured() bool {
 
 func (p *Publisher) Probe(ctx context.Context) error {
 	if !p.Configured() {
-		return &publisher.PublishError{Err: fmt.Errorf("facebook page publisher is not configured"), Retryable: false}
+		return &publisher.PublishError{Err: fmt.Errorf("facebook page publisher is not configured"), Retryable: false, Category: publisher.ErrorCategoryAuthExpired}
 	}
 
 	query := url.Values{}
@@ -67,12 +67,12 @@ func (p *Publisher) Probe(ctx context.Context) error {
 	endpoint := fmt.Sprintf("%s/%s?%s", p.baseURL, url.PathEscape(p.pageID), query.Encode())
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
-		return &publisher.PublishError{Err: fmt.Errorf("build facebook probe request: %w", err), Retryable: true}
+		return &publisher.PublishError{Err: fmt.Errorf("build facebook probe request: %w", err), Retryable: true, Category: publisher.ErrorCategoryUpstream}
 	}
 
 	response, err := p.httpClient.Do(request)
 	if err != nil {
-		return &publisher.PublishError{Err: fmt.Errorf("facebook probe request failed: %w", err), Retryable: true}
+		return &publisher.PublishError{Err: fmt.Errorf("facebook probe request failed: %w", err), Retryable: true, Category: publisher.ErrorCategoryUpstream}
 	}
 	defer response.Body.Close()
 
@@ -83,19 +83,20 @@ func (p *Publisher) Probe(ctx context.Context) error {
 		return nil
 	}
 
+	parsed := parseErrorResponse(bodyBytes)
 	retryable := response.StatusCode == http.StatusTooManyRequests || response.StatusCode >= 500
 	errMessage := fmt.Sprintf("facebook probe failed (%d)", response.StatusCode)
-	if parsed := parseErrorMessage(bodyBytes); parsed != "" {
-		errMessage += ": " + parsed
+	if parsed.Message != "" {
+		errMessage += ": " + parsed.Message
 	} else if bodyText != "" {
 		errMessage += ": " + bodyText
 	}
-	return &publisher.PublishError{Err: errors.New(errMessage), Retryable: retryable}
+	return &publisher.PublishError{Err: errors.New(errMessage), Retryable: retryable, Category: categorizeFacebookStatus(response.StatusCode, parsed)}
 }
 
 func (p *Publisher) Publish(ctx context.Context, post model.Post) (publisher.PublishResult, error) {
 	if !p.Configured() {
-		return publisher.PublishResult{}, &publisher.PublishError{Err: fmt.Errorf("facebook page publisher is not configured"), Retryable: false}
+		return publisher.PublishResult{}, &publisher.PublishError{Err: fmt.Errorf("facebook page publisher is not configured"), Retryable: false, Category: publisher.ErrorCategoryAuthExpired}
 	}
 
 	form := url.Values{}
@@ -111,13 +112,13 @@ func (p *Publisher) Publish(ctx context.Context, post model.Post) (publisher.Pub
 	endpoint := fmt.Sprintf("%s/%s/feed", p.baseURL, url.PathEscape(p.pageID))
 	request, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, strings.NewReader(form.Encode()))
 	if err != nil {
-		return publisher.PublishResult{}, &publisher.PublishError{Err: fmt.Errorf("build facebook request: %w", err), Retryable: true}
+		return publisher.PublishResult{}, &publisher.PublishError{Err: fmt.Errorf("build facebook request: %w", err), Retryable: true, Category: publisher.ErrorCategoryUpstream}
 	}
 	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 
 	response, err := p.httpClient.Do(request)
 	if err != nil {
-		return publisher.PublishResult{}, &publisher.PublishError{Err: fmt.Errorf("facebook request failed: %w", err), Retryable: true}
+		return publisher.PublishResult{}, &publisher.PublishError{Err: fmt.Errorf("facebook request failed: %w", err), Retryable: true, Category: publisher.ErrorCategoryUpstream}
 	}
 	defer response.Body.Close()
 
@@ -132,6 +133,7 @@ func (p *Publisher) Publish(ctx context.Context, post model.Post) (publisher.Pub
 				externalID = strings.TrimSpace(apiResponse.ID)
 			}
 		}
+		permalink := toFacebookPermalink(externalID)
 		p.logger.LogAttrs(
 			ctx,
 			slog.LevelInfo,
@@ -140,25 +142,71 @@ func (p *Publisher) Publish(ctx context.Context, post model.Post) (publisher.Pub
 			slog.String("publisher", "facebook-page"),
 			slog.Int64("post_id", post.ID),
 			slog.String("external_id", externalID),
+			slog.String("permalink", permalink),
 		)
-		return publisher.PublishResult{ExternalID: externalID, Message: "facebook publish succeeded"}, nil
+		return publisher.PublishResult{ExternalID: externalID, Permalink: permalink, Message: "facebook publish succeeded"}, nil
 	}
 
+	parsed := parseErrorResponse(bodyBytes)
 	retryable := response.StatusCode == http.StatusTooManyRequests || response.StatusCode >= 500
 	errMessage := fmt.Sprintf("facebook publish failed (%d)", response.StatusCode)
-	if parsed := parseErrorMessage(bodyBytes); parsed != "" {
-		errMessage += ": " + parsed
+	if parsed.Message != "" {
+		errMessage += ": " + parsed.Message
 	} else if bodyText != "" {
 		errMessage += ": " + bodyText
 	}
 
-	return publisher.PublishResult{}, &publisher.PublishError{Err: errors.New(errMessage), Retryable: retryable}
+	return publisher.PublishResult{}, &publisher.PublishError{Err: errors.New(errMessage), Retryable: retryable, Category: categorizeFacebookStatus(response.StatusCode, parsed)}
 }
 
-func parseErrorMessage(body []byte) string {
+type parsedFacebookError struct {
+	Message string
+	Type    string
+	Code    int
+}
+
+func parseErrorResponse(body []byte) parsedFacebookError {
 	parsed := errorResponse{}
 	if err := json.Unmarshal(body, &parsed); err != nil {
+		return parsedFacebookError{}
+	}
+	return parsedFacebookError{
+		Message: strings.TrimSpace(parsed.Error.Message),
+		Type:    strings.TrimSpace(parsed.Error.Type),
+		Code:    parsed.Error.Code,
+	}
+}
+
+func categorizeFacebookStatus(statusCode int, parsed parsedFacebookError) string {
+	if statusCode == http.StatusTooManyRequests {
+		return publisher.ErrorCategoryRateLimited
+	}
+	if statusCode == http.StatusUnauthorized {
+		return publisher.ErrorCategoryAuthExpired
+	}
+	if statusCode == http.StatusForbidden {
+		return publisher.ErrorCategoryScopeMissing
+	}
+	if statusCode >= 500 {
+		return publisher.ErrorCategoryUpstream
+	}
+
+	if parsed.Code == 190 || strings.Contains(strings.ToLower(parsed.Message), "expired") {
+		return publisher.ErrorCategoryAuthExpired
+	}
+	if strings.Contains(strings.ToLower(parsed.Message), "permission") || strings.Contains(strings.ToLower(parsed.Message), "scope") {
+		return publisher.ErrorCategoryScopeMissing
+	}
+	if statusCode >= 400 {
+		return publisher.ErrorCategoryValidation
+	}
+	return publisher.ErrorCategoryUnknown
+}
+
+func toFacebookPermalink(externalID string) string {
+	trimmed := strings.TrimSpace(externalID)
+	if trimmed == "" {
 		return ""
 	}
-	return strings.TrimSpace(parsed.Error.Message)
+	return "https://www.facebook.com/" + trimmed
 }

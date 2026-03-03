@@ -159,3 +159,11 @@ Bring the product closer to Postiz by introducing channel management and post-to
 3. **Deployment consistency**
    - Updated docs and status views to expose `data_dir` + `config_path`
    - Maintained API/UI behavior while removing docker env sprawl
+
+## Sprint I (Agent MVP hardening)
+
+- Added proof-of-post metadata to attempts: `permalink`, `error_category`, `screenshot_url`.
+- Added API endpoints for attempt screenshot attachment and one-click retry.
+- Added scheduling guardrail checks (duplicate slot + tight spacing warnings).
+- Added per-channel posting rules (`max_text_length`, `max_hashtags`, `required_phrase`).
+- Added weekly snapshot API endpoint for planning + delivery counters.

@@ -170,6 +170,42 @@ func (s *Service) attemptChannelPublish(ctx context.Context, post model.Post, ch
 		attemptNo = latest.AttemptNo + 1
 	}
 
+	rule, hasRule, ruleErr := s.store.GetChannelRule(ctx, channel.ID)
+	if ruleErr != nil {
+		return fmt.Errorf("load channel rule for channel=%d: %w", channel.ID, ruleErr)
+	}
+	if hasRule {
+		if validationErr := validatePostAgainstRule(post.Text, channel, rule); validationErr != nil {
+			errText := validationErr.Error()
+			errorCategory := publisher.ErrorCategoryValidation
+			_, insertErr := s.store.InsertPublishAttempt(ctx, db.PublishAttemptInput{
+				PostID:        post.ID,
+				ChannelID:     channel.ID,
+				AttemptNo:     attemptNo,
+				AttemptedAt:   now,
+				Status:        model.PublishAttemptStatusFailed,
+				Error:         &errText,
+				ErrorCategory: &errorCategory,
+			})
+			if insertErr != nil {
+				return fmt.Errorf("insert rule-failed publish attempt for post=%d channel=%d: %w", post.ID, channel.ID, insertErr)
+			}
+			s.logger.LogAttrs(
+				ctx,
+				slog.LevelError,
+				"channel publish blocked by rule",
+				slog.String("component", "scheduler"),
+				slog.Int64("post_id", post.ID),
+				slog.Int64("channel_id", channel.ID),
+				slog.String("channel_type", string(channel.Type)),
+				slog.String("channel_name", channel.DisplayName),
+				slog.String("error", errText),
+				slog.String("error_category", errorCategory),
+			)
+			return validationErr
+		}
+	}
+
 	publishResult, err := activePublisher.Publish(ctx, post)
 	if err == nil {
 		_, insertErr := s.store.InsertPublishAttempt(ctx, db.PublishAttemptInput{
@@ -179,6 +215,7 @@ func (s *Service) attemptChannelPublish(ctx context.Context, post model.Post, ch
 			AttemptedAt: now,
 			Status:      model.PublishAttemptStatusSent,
 			ExternalID:  optionalString(publishResult.ExternalID),
+			Permalink:   optionalString(publishResult.Permalink),
 		})
 		if insertErr != nil {
 			return fmt.Errorf("insert sent publish attempt for post=%d channel=%d: %w", post.ID, channel.ID, insertErr)
@@ -193,12 +230,14 @@ func (s *Service) attemptChannelPublish(ctx context.Context, post model.Post, ch
 			slog.String("channel_type", string(channel.Type)),
 			slog.String("channel_name", channel.DisplayName),
 			slog.String("publisher", activePublisher.Mode()),
+			slog.String("permalink", publishResult.Permalink),
 		)
 		return nil
 	}
 
 	status := model.PublishAttemptStatusFailed
 	nextRetry := (*time.Time)(nil)
+	errorCategory := publisher.ErrorCategory(err)
 	if publisher.IsRetryable(err) {
 		candidate, keepRetry := scheduleRetry(now, attemptNo)
 		if keepRetry {
@@ -208,13 +247,14 @@ func (s *Service) attemptChannelPublish(ctx context.Context, post model.Post, ch
 	}
 	errText := err.Error()
 	_, insertErr := s.store.InsertPublishAttempt(ctx, db.PublishAttemptInput{
-		PostID:      post.ID,
-		ChannelID:   channel.ID,
-		AttemptNo:   attemptNo,
-		AttemptedAt: now,
-		Status:      status,
-		Error:       &errText,
-		RetryAt:     nextRetry,
+		PostID:        post.ID,
+		ChannelID:     channel.ID,
+		AttemptNo:     attemptNo,
+		AttemptedAt:   now,
+		Status:        status,
+		Error:         &errText,
+		ErrorCategory: &errorCategory,
+		RetryAt:       nextRetry,
 	})
 	if insertErr != nil {
 		return fmt.Errorf("insert failed publish attempt for post=%d channel=%d: %w", post.ID, channel.ID, insertErr)
@@ -234,6 +274,7 @@ func (s *Service) attemptChannelPublish(ctx context.Context, post model.Post, ch
 		slog.Int("attempt_no", attemptNo),
 		slog.String("status", status),
 		slog.String("error", err.Error()),
+		slog.String("error_category", errorCategory),
 	}
 	if nextRetry != nil {
 		attrs = append(attrs, slog.String("next_retry_at", nextRetry.Format(time.RFC3339)))
@@ -382,6 +423,43 @@ func shouldAttemptChannel(force bool, post model.Post, latest model.PublishAttem
 		return false
 	}
 	return !post.ScheduledAt.After(now)
+}
+
+func validatePostAgainstRule(text string, channel model.Channel, rule model.ChannelRule) error {
+	trimmedText := strings.TrimSpace(text)
+	if rule.MaxTextLength != nil {
+		if len([]rune(trimmedText)) > *rule.MaxTextLength {
+			return fmt.Errorf("post violates channel rule for %s: max_text_length=%d", channel.DisplayName, *rule.MaxTextLength)
+		}
+	}
+	if rule.MaxHashtags != nil {
+		if countHashtags(trimmedText) > *rule.MaxHashtags {
+			return fmt.Errorf("post violates channel rule for %s: max_hashtags=%d", channel.DisplayName, *rule.MaxHashtags)
+		}
+	}
+	if rule.RequiredPhrase != nil {
+		required := strings.TrimSpace(*rule.RequiredPhrase)
+		if required != "" {
+			if !strings.Contains(strings.ToLower(trimmedText), strings.ToLower(required)) {
+				return fmt.Errorf("post violates channel rule for %s: required_phrase is missing", channel.DisplayName)
+			}
+		}
+	}
+	return nil
+}
+
+func countHashtags(text string) int {
+	count := 0
+	for _, token := range strings.Fields(text) {
+		trimmed := strings.TrimSpace(token)
+		if len(trimmed) <= 1 {
+			continue
+		}
+		if strings.HasPrefix(trimmed, "#") {
+			count++
+		}
+	}
+	return count
 }
 
 func scheduleRetry(now time.Time, failCount int) (*time.Time, bool) {

@@ -15,14 +15,17 @@ import (
 )
 
 type PostAttemptView struct {
-	AttemptedAt string
-	ChannelName string
-	ChannelType string
-	Status      string
-	AttemptNo   int
-	Error       string
-	RetryAt     string
-	ExternalID  string
+	AttemptedAt   string
+	ChannelName   string
+	ChannelType   string
+	Status        string
+	AttemptNo     int
+	Error         string
+	ErrorCategory string
+	RetryAt       string
+	ExternalID    string
+	Permalink     string
+	ScreenshotURL string
 }
 
 type PostHistoryPageData struct {
@@ -157,14 +160,17 @@ func (a *App) PostHistory(w http.ResponseWriter, r *http.Request) {
 	for _, attempt := range attempts {
 		channel := channelMap[attempt.ChannelID]
 		view := PostAttemptView{
-			AttemptedAt: attempt.AttemptedAt.In(a.Config.Location).Format("2006-01-02 15:04"),
-			ChannelName: channel.DisplayName,
-			ChannelType: string(channel.Type),
-			Status:      attempt.Status,
-			AttemptNo:   attempt.AttemptNo,
-			Error:       derefString(attempt.Error),
-			RetryAt:     "",
-			ExternalID:  derefString(attempt.ExternalID),
+			AttemptedAt:   attempt.AttemptedAt.In(a.Config.Location).Format("2006-01-02 15:04"),
+			ChannelName:   channel.DisplayName,
+			ChannelType:   string(channel.Type),
+			Status:        attempt.Status,
+			AttemptNo:     attempt.AttemptNo,
+			Error:         derefString(attempt.Error),
+			ErrorCategory: derefString(attempt.ErrorCategory),
+			RetryAt:       "",
+			ExternalID:    derefString(attempt.ExternalID),
+			Permalink:     derefString(attempt.Permalink),
+			ScreenshotURL: derefString(attempt.ScreenshotURL),
 		}
 		if view.ChannelName == "" {
 			view.ChannelName = fmt.Sprintf("Channel #%d", attempt.ChannelID)

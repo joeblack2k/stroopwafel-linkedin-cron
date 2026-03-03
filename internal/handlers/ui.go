@@ -306,7 +306,14 @@ func (a *App) CreatePost(w http.ResponseWriter, r *http.Request) {
 	if redirectTo == "" {
 		redirectTo = "/calendar"
 	}
-	message := url.QueryEscape(fmt.Sprintf("Post %d created", created.ID))
+	messageText := fmt.Sprintf("Post %d created", created.ID)
+	if input.Status == model.StatusScheduled && input.ScheduledAt != nil {
+		warnings, warnErr := a.computeSchedulingWarnings(r.Context(), *input.ScheduledAt, form.ChannelIDs, created.ID)
+		if warnErr == nil && len(warnings) > 0 {
+			messageText = messageText + " · warning: " + warnings[0].Message
+		}
+	}
+	message := url.QueryEscape(messageText)
 	http.Redirect(w, r, redirectTo+"?msg="+message, http.StatusSeeOther)
 }
 
@@ -468,7 +475,14 @@ func (a *App) UpdatePost(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	http.Redirect(w, r, fmt.Sprintf("/posts/%d/edit?msg=%s", updated.ID, url.QueryEscape("Post updated")), http.StatusSeeOther)
+	messageText := "Post updated"
+	if input.Status == model.StatusScheduled && input.ScheduledAt != nil {
+		warnings, warnErr := a.computeSchedulingWarnings(r.Context(), *input.ScheduledAt, form.ChannelIDs, updated.ID)
+		if warnErr == nil && len(warnings) > 0 {
+			messageText = messageText + " · warning: " + warnings[0].Message
+		}
+	}
+	http.Redirect(w, r, fmt.Sprintf("/posts/%d/edit?msg=%s", updated.ID, url.QueryEscape(messageText)), http.StatusSeeOther)
 }
 
 func (a *App) DeletePost(w http.ResponseWriter, r *http.Request) {
@@ -630,7 +644,15 @@ func (a *App) ReschedulePost(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	http.Redirect(w, r, withFlash(returnTo, "Post moved on calendar", ""), http.StatusSeeOther)
+	message := "Post moved on calendar"
+	channelIDs, channelErr := a.Store.ListPostChannelIDs(r.Context(), post.ID)
+	if channelErr == nil {
+		warnings, warnErr := a.computeSchedulingWarnings(r.Context(), *scheduledAt, channelIDs, post.ID)
+		if warnErr == nil && len(warnings) > 0 {
+			message = message + " · warning: " + warnings[0].Message
+		}
+	}
+	http.Redirect(w, r, withFlash(returnTo, message, ""), http.StatusSeeOther)
 }
 
 func (a *App) Settings(w http.ResponseWriter, r *http.Request) {
@@ -793,6 +815,10 @@ func (a *App) parsePostForm(r *http.Request) (db.PostInput, PostFormInput, error
 
 	if status == model.StatusScheduled && len(channelIDs) == 0 {
 		return db.PostInput{}, PostFormInput{ScheduledAt: scheduledAtRaw, Text: text, Status: string(status), MediaURL: mediaURLRaw, ChannelIDs: channelIDs}, errors.New("at least one channel is required when status is scheduled")
+	}
+
+	if validationErr := a.validatePostAgainstChannelRules(r.Context(), text, channelIDs); validationErr != nil {
+		return db.PostInput{}, PostFormInput{ScheduledAt: scheduledAtRaw, Text: text, Status: string(status), MediaURL: mediaURLRaw, ChannelIDs: channelIDs}, validationErr
 	}
 
 	return db.PostInput{ScheduledAt: parsedScheduledAt, Text: text, Status: status, MediaURL: mediaURL}, PostFormInput{ScheduledAt: scheduledAtRaw, Text: text, Status: string(status), MediaURL: mediaURLRaw, ChannelIDs: channelIDs}, nil

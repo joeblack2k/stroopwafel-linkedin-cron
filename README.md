@@ -145,6 +145,14 @@ For local runs, `.env` values bootstrap config if `APP_CONFIG_PATH` does not exi
 
 API keys are stored hashed in SQLite.
 
+## Agent-Focused MVP Additions
+
+- Proof-of-post log now stores and exposes: status, attempted time, channel, external id, permalink, error category, optional screenshot URL.
+- Smart planning guardrails warn on duplicate slots and too-tight scheduling windows (`30m`).
+- Channel rules are configurable per channel: `max_text_length`, `max_hashtags`, `required_phrase`.
+- Failsafe error categories are persisted for attempts (`auth_expired`, `scope_missing`, `rate_limited`, etc.) with one-click retry endpoints.
+- Weekly snapshot endpoint provides planning and delivery counters plus top-post selection.
+
 ## UI Endpoints
 
 - `GET /login`
@@ -174,6 +182,7 @@ API keys are stored hashed in SQLite.
 - `POST /settings/channels`
 - `GET /settings/channels/{id}/edit`
 - `POST /settings/channels/{id}`
+- `POST /settings/channels/{id}/rules`
 - `POST /settings/channels/{id}/test`
 - `POST /settings/channels/{id}/disable`
 - `POST /settings/channels/{id}/enable`
@@ -185,19 +194,25 @@ API keys are stored hashed in SQLite.
 - `GET /api/v1/posts`
 - `GET /api/v1/posts/{id}`
 - `POST /api/v1/posts`
+- `POST /api/v1/posts/guardrails`
 - `PUT /api/v1/posts/{id}`
 - `DELETE /api/v1/posts/{id}`
 - `POST /api/v1/posts/{id}/send-now`
 - `POST /api/v1/posts/{id}/send-and-delete`
 - `POST /api/v1/posts/{id}/reschedule`
 - `GET /api/v1/posts/{id}/attempts`
+- `POST /api/v1/posts/{id}/attempts/{attempt_id}/screenshot`
+- `POST /api/v1/posts/{id}/attempts/{attempt_id}/retry`
 - `POST /api/v1/posts/bulk/send-now`
 - `POST /api/v1/posts/bulk/channels`
 - `GET /api/v1/settings/status`
+- `GET /api/v1/analytics/weekly-snapshot`
 - `POST /api/v1/settings/bot-handoff`
 - `GET /api/v1/channels`
 - `POST /api/v1/channels`
 - `PUT /api/v1/channels/{id}`
+- `GET /api/v1/channels/{id}/rules`
+- `PUT /api/v1/channels/{id}/rules`
 - `GET /api/v1/channels/{id}/audit`
 - `DELETE /api/v1/channels/{id}`
 - `POST /api/v1/channels/{id}/test`
@@ -213,6 +228,8 @@ Retry backoff:
 - 15m
 
 For channel-assigned posts, attempts are tracked per `(post, channel)` in `publish_attempts`.
+
+Attempt failures include categorized error metadata for retry automation.
 
 ## GHCR Deploy
 

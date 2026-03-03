@@ -84,8 +84,11 @@
             <th>Status</th>
             <th>Attempt #</th>
             <th>Error</th>
+            <th>Error category</th>
             <th>Retry at</th>
             <th>External ID</th>
+            <th>Permalink</th>
+            <th>Screenshot</th>
           </tr>
         </thead>
         <tbody>
@@ -97,13 +100,16 @@
                 <td>{{.Status}}</td>
                 <td>{{.AttemptNo}}</td>
                 <td>{{.Error}}</td>
+                <td>{{.ErrorCategory}}</td>
                 <td>{{.RetryAt}}</td>
                 <td>{{.ExternalID}}</td>
+                <td>{{if .Permalink}}<a href="{{.Permalink}}" target="_blank" rel="noopener">Open</a>{{end}}</td>
+                <td>{{if .ScreenshotURL}}<a href="{{.ScreenshotURL}}" target="_blank" rel="noopener">View</a>{{end}}</td>
               </tr>
             {{end}}
           {{else}}
             <tr>
-              <td colspan="7" class="muted">No attempts found for current filters</td>
+              <td colspan="10" class="muted">No attempts found for current filters</td>
             </tr>
           {{end}}
         </tbody>

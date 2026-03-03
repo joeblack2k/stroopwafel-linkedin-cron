@@ -12,14 +12,17 @@ import (
 )
 
 type PublishAttemptInput struct {
-	PostID      int64
-	ChannelID   int64
-	AttemptNo   int
-	AttemptedAt time.Time
-	Status      string
-	Error       *string
-	RetryAt     *time.Time
-	ExternalID  *string
+	PostID        int64
+	ChannelID     int64
+	AttemptNo     int
+	AttemptedAt   time.Time
+	Status        string
+	Error         *string
+	ErrorCategory *string
+	RetryAt       *time.Time
+	ExternalID    *string
+	Permalink     *string
+	ScreenshotURL *string
 }
 
 func (s *Store) InsertPublishAttempt(ctx context.Context, input PublishAttemptInput) (model.PublishAttempt, error) {
@@ -29,16 +32,19 @@ func (s *Store) InsertPublishAttempt(ctx context.Context, input PublishAttemptIn
 
 	result, err := s.db.ExecContext(
 		ctx,
-		`INSERT INTO publish_attempts(post_id, channel_id, attempt_no, attempted_at, status, error, retry_at, external_id)
-		 VALUES(?, ?, ?, ?, ?, ?, ?, ?)`,
+		`INSERT INTO publish_attempts(post_id, channel_id, attempt_no, attempted_at, status, error, error_category, retry_at, external_id, permalink, screenshot_url)
+		 VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		input.PostID,
 		input.ChannelID,
 		input.AttemptNo,
 		formatDBTime(input.AttemptedAt.UTC()),
 		input.Status,
 		nullableString(input.Error),
+		nullableString(input.ErrorCategory),
 		nullableTime(input.RetryAt),
 		nullableString(input.ExternalID),
+		nullableString(input.Permalink),
+		nullableString(input.ScreenshotURL),
 	)
 	if err != nil {
 		return model.PublishAttempt{}, fmt.Errorf("insert publish attempt: %w", err)
@@ -53,7 +59,7 @@ func (s *Store) InsertPublishAttempt(ctx context.Context, input PublishAttemptIn
 func (s *Store) GetPublishAttempt(ctx context.Context, id int64) (model.PublishAttempt, error) {
 	row := s.db.QueryRowContext(
 		ctx,
-		`SELECT id, post_id, channel_id, attempt_no, attempted_at, status, error, retry_at, external_id
+		`SELECT id, post_id, channel_id, attempt_no, attempted_at, status, error, error_category, retry_at, external_id, permalink, screenshot_url
 		 FROM publish_attempts
 		 WHERE id = ?`,
 		id,
@@ -68,10 +74,44 @@ func (s *Store) GetPublishAttempt(ctx context.Context, id int64) (model.PublishA
 	return attempt, nil
 }
 
+func (s *Store) SetPublishAttemptScreenshot(ctx context.Context, id int64, screenshotURL string) (model.PublishAttempt, error) {
+	trimmed := strings.TrimSpace(screenshotURL)
+	if trimmed != "" {
+		if !strings.HasPrefix(trimmed, "http://") && !strings.HasPrefix(trimmed, "https://") {
+			return model.PublishAttempt{}, fmt.Errorf("screenshot_url must be absolute http(s) URL")
+		}
+	}
+
+	var screenshotValue any
+	if trimmed != "" {
+		screenshotValue = trimmed
+	}
+
+	result, err := s.db.ExecContext(
+		ctx,
+		`UPDATE publish_attempts
+		 SET screenshot_url = ?
+		 WHERE id = ?`,
+		screenshotValue,
+		id,
+	)
+	if err != nil {
+		return model.PublishAttempt{}, fmt.Errorf("set publish attempt screenshot %d: %w", id, err)
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return model.PublishAttempt{}, fmt.Errorf("read rows affected for screenshot update %d: %w", id, err)
+	}
+	if affected == 0 {
+		return model.PublishAttempt{}, ErrNotFound
+	}
+	return s.GetPublishAttempt(ctx, id)
+}
+
 func (s *Store) GetLatestPublishAttempt(ctx context.Context, postID, channelID int64) (model.PublishAttempt, bool, error) {
 	row := s.db.QueryRowContext(
 		ctx,
-		`SELECT id, post_id, channel_id, attempt_no, attempted_at, status, error, retry_at, external_id
+		`SELECT id, post_id, channel_id, attempt_no, attempted_at, status, error, error_category, retry_at, external_id, permalink, screenshot_url
 		 FROM publish_attempts
 		 WHERE post_id = ?
 		   AND channel_id = ?
@@ -93,7 +133,7 @@ func (s *Store) GetLatestPublishAttempt(ctx context.Context, postID, channelID i
 func (s *Store) ListLatestPublishAttemptsForPost(ctx context.Context, postID int64) (map[int64]model.PublishAttempt, error) {
 	rows, err := s.db.QueryContext(
 		ctx,
-		`SELECT pa.id, pa.post_id, pa.channel_id, pa.attempt_no, pa.attempted_at, pa.status, pa.error, pa.retry_at, pa.external_id
+		`SELECT pa.id, pa.post_id, pa.channel_id, pa.attempt_no, pa.attempted_at, pa.status, pa.error, pa.error_category, pa.retry_at, pa.external_id, pa.permalink, pa.screenshot_url
 		 FROM publish_attempts pa
 		 INNER JOIN (
 		   SELECT channel_id, MAX(attempt_no) AS max_attempt_no
@@ -112,9 +152,9 @@ func (s *Store) ListLatestPublishAttemptsForPost(ctx context.Context, postID int
 
 	attempts := make(map[int64]model.PublishAttempt)
 	for rows.Next() {
-		attempt, err := scanPublishAttempt(rows)
-		if err != nil {
-			return nil, fmt.Errorf("scan latest publish attempt row: %w", err)
+		attempt, scanErr := scanPublishAttempt(rows)
+		if scanErr != nil {
+			return nil, fmt.Errorf("scan latest publish attempt row: %w", scanErr)
 		}
 		attempts[attempt.ChannelID] = attempt
 	}
@@ -154,17 +194,20 @@ func (s *Store) SetPostState(ctx context.Context, id int64, status model.PostSta
 
 func scanPublishAttempt(s scanner) (model.PublishAttempt, error) {
 	var (
-		id          int64
-		postID      int64
-		channelID   int64
-		attemptNo   int
-		attemptedAt string
-		status      string
-		errorText   sql.NullString
-		retryAt     sql.NullString
-		externalID  sql.NullString
+		id            int64
+		postID        int64
+		channelID     int64
+		attemptNo     int
+		attemptedAt   string
+		status        string
+		errorText     sql.NullString
+		errorCategory sql.NullString
+		retryAt       sql.NullString
+		externalID    sql.NullString
+		permalink     sql.NullString
+		screenshotURL sql.NullString
 	)
-	if err := s.Scan(&id, &postID, &channelID, &attemptNo, &attemptedAt, &status, &errorText, &retryAt, &externalID); err != nil {
+	if err := s.Scan(&id, &postID, &channelID, &attemptNo, &attemptedAt, &status, &errorText, &errorCategory, &retryAt, &externalID, &permalink, &screenshotURL); err != nil {
 		return model.PublishAttempt{}, err
 	}
 
@@ -185,16 +228,28 @@ func scanPublishAttempt(s scanner) (model.PublishAttempt, error) {
 		value := errorText.String
 		attempt.Error = &value
 	}
+	if errorCategory.Valid {
+		value := errorCategory.String
+		attempt.ErrorCategory = &value
+	}
 	if retryAt.Valid {
-		value, err := parseDBTime(retryAt.String)
-		if err != nil {
-			return model.PublishAttempt{}, fmt.Errorf("parse retry_at: %w", err)
+		value, parseErr := parseDBTime(retryAt.String)
+		if parseErr != nil {
+			return model.PublishAttempt{}, fmt.Errorf("parse retry_at: %w", parseErr)
 		}
 		attempt.RetryAt = &value
 	}
 	if externalID.Valid {
 		value := externalID.String
 		attempt.ExternalID = &value
+	}
+	if permalink.Valid {
+		value := permalink.String
+		attempt.Permalink = &value
+	}
+	if screenshotURL.Valid {
+		value := screenshotURL.String
+		attempt.ScreenshotURL = &value
 	}
 	return attempt, nil
 }
@@ -210,7 +265,7 @@ func (s *Store) ListPublishAttemptsForPost(ctx context.Context, postID int64, ch
 		offset = 0
 	}
 
-	query := `SELECT id, post_id, channel_id, attempt_no, attempted_at, status, error, retry_at, external_id
+	query := `SELECT id, post_id, channel_id, attempt_no, attempted_at, status, error, error_category, retry_at, external_id, permalink, screenshot_url
 	 FROM publish_attempts
 	 WHERE post_id = ?`
 	args := []any{postID}
@@ -287,4 +342,38 @@ func (s *Store) CountPublishAttemptsForPost(ctx context.Context, postID int64, c
 	}
 
 	return count, nil
+}
+
+func (s *Store) ListPublishAttemptsByRange(ctx context.Context, start, end time.Time) ([]model.PublishAttempt, error) {
+	if end.Before(start) {
+		start, end = end, start
+	}
+
+	rows, err := s.db.QueryContext(
+		ctx,
+		`SELECT id, post_id, channel_id, attempt_no, attempted_at, status, error, error_category, retry_at, external_id, permalink, screenshot_url
+		 FROM publish_attempts
+		 WHERE attempted_at >= ?
+		   AND attempted_at < ?
+		 ORDER BY attempted_at DESC, id DESC`,
+		formatDBTime(start.UTC()),
+		formatDBTime(end.UTC()),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("list publish attempts by range: %w", err)
+	}
+	defer rows.Close()
+
+	attempts := make([]model.PublishAttempt, 0)
+	for rows.Next() {
+		attempt, scanErr := scanPublishAttempt(rows)
+		if scanErr != nil {
+			return nil, fmt.Errorf("scan publish attempt by range row: %w", scanErr)
+		}
+		attempts = append(attempts, attempt)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate publish attempts by range rows: %w", err)
+	}
+	return attempts, nil
 }

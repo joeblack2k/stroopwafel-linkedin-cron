@@ -32,6 +32,12 @@ type ChannelUpdateFormInput struct {
 	FacebookPageToken       string
 }
 
+type ChannelRuleFormInput struct {
+	MaxTextLength  string
+	MaxHashtags    string
+	RequiredPhrase string
+}
+
 type ChannelAuditSecretActionView struct {
 	Field  string
 	Action string
@@ -58,11 +64,12 @@ type ChannelAuditEventView struct {
 }
 
 type ChannelEditPageData struct {
-	Title   string
-	Channel ChannelView
-	Form    ChannelUpdateFormInput
-	Message string
-	Error   string
+	Title    string
+	Channel  ChannelView
+	Form     ChannelUpdateFormInput
+	RuleForm ChannelRuleFormInput
+	Message  string
+	Error    string
 
 	AuditEvents  []ChannelAuditEventView
 	AuditLimit   int
@@ -161,6 +168,42 @@ func (a *App) UpdateChannel(w http.ResponseWriter, r *http.Request) {
 	}
 
 	http.Redirect(w, r, "/settings/channels?msg="+url.QueryEscape("Channel updated"), http.StatusSeeOther)
+}
+
+func (a *App) UpdateChannelRules(w http.ResponseWriter, r *http.Request) {
+	id, err := parseID(r.PathValue("id"))
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Redirect(w, r, "/settings/channels/"+strconv.FormatInt(id, 10)+"/edit?err="+url.QueryEscape("invalid form body"), http.StatusSeeOther)
+		return
+	}
+
+	maxTextLength, err := parseOptionalPositiveInt(r.FormValue("max_text_length"))
+	if err != nil {
+		http.Redirect(w, r, "/settings/channels/"+strconv.FormatInt(id, 10)+"/edit?err="+url.QueryEscape(err.Error()), http.StatusSeeOther)
+		return
+	}
+	maxHashtags, err := parseOptionalPositiveInt(r.FormValue("max_hashtags"))
+	if err != nil {
+		http.Redirect(w, r, "/settings/channels/"+strconv.FormatInt(id, 10)+"/edit?err="+url.QueryEscape(err.Error()), http.StatusSeeOther)
+		return
+	}
+	requiredPhrase := strings.TrimSpace(r.FormValue("required_phrase"))
+
+	_, upsertErr := a.Store.UpsertChannelRule(r.Context(), id, db.ChannelRuleInput{
+		MaxTextLength:  maxTextLength,
+		MaxHashtags:    maxHashtags,
+		RequiredPhrase: stringPointer(requiredPhrase),
+	})
+	if upsertErr != nil {
+		http.Redirect(w, r, "/settings/channels/"+strconv.FormatInt(id, 10)+"/edit?err="+url.QueryEscape(upsertErr.Error()), http.StatusSeeOther)
+		return
+	}
+
+	http.Redirect(w, r, "/settings/channels/"+strconv.FormatInt(id, 10)+"/edit?msg="+url.QueryEscape("Channel rules saved"), http.StatusSeeOther)
 }
 
 func (a *App) APIUpdateChannel(w http.ResponseWriter, r *http.Request) {
@@ -368,10 +411,13 @@ func (a *App) renderChannelEditPage(w http.ResponseWriter, r *http.Request, stat
 	}
 	nextOffset := auditOffset + auditLimit
 
+	ruleForm := a.loadChannelRuleForm(r.Context(), channel.ID)
+
 	data := ChannelEditPageData{
 		Title:        "Edit Channel",
 		Channel:      toChannelView(channel),
 		Form:         form,
+		RuleForm:     ruleForm,
 		Message:      message,
 		Error:        renderErr,
 		AuditEvents:  auditEvents,
@@ -551,4 +597,31 @@ func normalizePayloadStringPointer(value *string) *string {
 	}
 	trimmed := strings.TrimSpace(*value)
 	return &trimmed
+}
+
+func (a *App) loadChannelRuleForm(ctx context.Context, channelID int64) ChannelRuleFormInput {
+	rule, found, err := a.Store.GetChannelRule(ctx, channelID)
+	if err != nil || !found {
+		return ChannelRuleFormInput{}
+	}
+	form := ChannelRuleFormInput{RequiredPhrase: derefString(rule.RequiredPhrase)}
+	if rule.MaxTextLength != nil {
+		form.MaxTextLength = strconv.Itoa(*rule.MaxTextLength)
+	}
+	if rule.MaxHashtags != nil {
+		form.MaxHashtags = strconv.Itoa(*rule.MaxHashtags)
+	}
+	return form
+}
+
+func parseOptionalPositiveInt(raw string) (*int, error) {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return nil, nil
+	}
+	value, err := strconv.Atoi(trimmed)
+	if err != nil || value <= 0 {
+		return nil, fmt.Errorf("value must be a positive integer")
+	}
+	return &value, nil
 }
