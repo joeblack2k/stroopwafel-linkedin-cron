@@ -462,3 +462,88 @@ func derefNullableString(value *string) string {
 	}
 	return *value
 }
+
+func (s *Store) ListChannelsByIDs(ctx context.Context, ids []int64) ([]model.Channel, error) {
+	unique := uniqueIDs(ids)
+	if len(unique) == 0 {
+		return []model.Channel{}, nil
+	}
+
+	placeholders, err := inPlaceholders(len(unique))
+	if err != nil {
+		return nil, err
+	}
+
+	query := `SELECT id, type, display_name, status, created_at, updated_at, last_test_at, last_error,
+		linkedin_access_token, linkedin_author_urn, linkedin_api_base_url,
+		facebook_page_access_token, facebook_page_id, facebook_api_base_url
+	 FROM channels
+	 WHERE id IN (` + placeholders + `)
+	 ORDER BY id ASC`
+
+	rows, err := s.db.QueryContext(ctx, query, int64Args(unique)...)
+	if err != nil {
+		return nil, fmt.Errorf("list channels by ids: %w", err)
+	}
+	defer rows.Close()
+
+	channels := make([]model.Channel, 0, len(unique))
+	for rows.Next() {
+		channel, scanErr := scanChannel(rows)
+		if scanErr != nil {
+			return nil, fmt.Errorf("scan channels by ids row: %w", scanErr)
+		}
+		channels = append(channels, channel)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate channels by ids rows: %w", err)
+	}
+	return channels, nil
+}
+
+func (s *Store) SetChannelStatus(ctx context.Context, id int64, status string, lastError *string) (model.Channel, error) {
+	if !isAllowedChannelStatus(status) {
+		return model.Channel{}, fmt.Errorf("invalid channel status: %s", status)
+	}
+
+	now := time.Now().UTC()
+	var lastErrorValue any
+	if lastError != nil {
+		trimmed := strings.TrimSpace(*lastError)
+		if trimmed != "" {
+			lastErrorValue = trimmed
+		}
+	}
+
+	result, err := s.db.ExecContext(
+		ctx,
+		`UPDATE channels
+		 SET status = ?, updated_at = ?, last_error = ?
+		 WHERE id = ?`,
+		status,
+		formatDBTime(now),
+		lastErrorValue,
+		id,
+	)
+	if err != nil {
+		return model.Channel{}, fmt.Errorf("update status for channel %d: %w", id, err)
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return model.Channel{}, fmt.Errorf("read rows affected for update status channel %d: %w", id, err)
+	}
+	if affected == 0 {
+		return model.Channel{}, ErrNotFound
+	}
+
+	return s.GetChannel(ctx, id)
+}
+
+func isAllowedChannelStatus(status string) bool {
+	switch status {
+	case model.ChannelStatusActive, model.ChannelStatusError, model.ChannelStatusDisabled:
+		return true
+	default:
+		return false
+	}
+}

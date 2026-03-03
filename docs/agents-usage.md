@@ -30,7 +30,29 @@ Use `X-API-Key`:
 curl -H "X-API-Key: lcak_xxx" http://localhost:8080/api/v1/posts
 ```
 
-Create post:
+## Channel-first workflow (important)
+
+Scheduled posts must include at least one `channel_id`.
+
+List channels:
+
+```bash
+curl -H "X-API-Key: lcak_xxx" http://localhost:8080/api/v1/channels
+```
+
+Create a dry-run channel (safe default for automation tests):
+
+```bash
+curl -X POST http://localhost:8080/api/v1/channels \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: lcak_xxx" \
+  -d '{
+    "type": "dry-run",
+    "display_name": "agent-dry-run"
+  }'
+```
+
+Create a scheduled post with channel assignment:
 
 ```bash
 curl -X POST http://localhost:8080/api/v1/posts \
@@ -39,7 +61,8 @@ curl -X POST http://localhost:8080/api/v1/posts \
   -d '{
     "text": "Agent generated update",
     "status": "scheduled",
-    "scheduled_at": "2026-03-03T12:00:00Z"
+    "scheduled_at": "2026-03-03T12:00:00Z",
+    "channel_ids": [1]
   }'
 ```
 
@@ -47,6 +70,35 @@ Send now:
 
 ```bash
 curl -X POST -H "X-API-Key: lcak_xxx" http://localhost:8080/api/v1/posts/1/send-now
+```
+
+## Bulk operations
+
+Bulk send now:
+
+```bash
+curl -X POST http://localhost:8080/api/v1/posts/bulk/send-now \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: lcak_xxx" \
+  -d '{"post_ids": [1,2,3]}'
+```
+
+Bulk set channels:
+
+```bash
+curl -X POST http://localhost:8080/api/v1/posts/bulk/channels \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: lcak_xxx" \
+  -d '{"post_ids": [1,2,3], "channel_ids": [1]}'
+```
+
+## Delivery history
+
+Per-post channel attempt history:
+
+```bash
+curl -H "X-API-Key: lcak_xxx" \
+  "http://localhost:8080/api/v1/posts/1/attempts?status=retry&limit=50"
 ```
 
 ## Security recommendations for agents

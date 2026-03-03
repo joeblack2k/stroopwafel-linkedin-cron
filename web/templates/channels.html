@@ -12,6 +12,7 @@
     <nav>
       <a href="/calendar">Calendar</a>
       <a href="/posts/new">New Post</a>
+      <a href="/posts/bulk">Bulk</a>
       <a href="/settings">Settings</a>
       <a href="/settings/channels">Channels</a>
     </nav>
@@ -147,6 +148,15 @@
                   <form method="post" action="/settings/channels/{{.ID}}/test" class="inline">
                     <button type="submit">Test</button>
                   </form>
+                  {{if eq .Status "disabled"}}
+                    <form method="post" action="/settings/channels/{{.ID}}/enable" class="inline">
+                      <button type="submit">Enable</button>
+                    </form>
+                  {{else}}
+                    <form method="post" action="/settings/channels/{{.ID}}/disable" class="inline">
+                      <button type="submit">Disable</button>
+                    </form>
+                  {{end}}
                   <form method="post" action="/settings/channels/{{.ID}}/delete" class="inline">
                     <button type="submit" class="danger">Delete</button>
                   </form>

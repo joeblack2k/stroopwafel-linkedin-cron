@@ -130,8 +130,12 @@ func registerProtectedRoutes(mux *http.ServeMux, uiAuth func(http.Handler) http.
 
 	mux.Handle("GET /calendar", uiAuth(http.HandlerFunc(app.Calendar)))
 	mux.Handle("GET /posts/new", uiAuth(http.HandlerFunc(app.NewPost)))
+	mux.Handle("GET /posts/bulk", uiAuth(http.HandlerFunc(app.BulkPosts)))
+	mux.Handle("POST /posts/bulk/channels", uiAuth(http.HandlerFunc(app.BulkSetPostChannels)))
+	mux.Handle("POST /posts/bulk/send-now", uiAuth(http.HandlerFunc(app.BulkSendNowPosts)))
 	mux.Handle("POST /posts", uiAuth(http.HandlerFunc(app.CreatePost)))
 	mux.Handle("GET /posts/{id}/edit", uiAuth(http.HandlerFunc(app.EditPost)))
+	mux.Handle("GET /posts/{id}/history", uiAuth(http.HandlerFunc(app.PostHistory)))
 	mux.Handle("POST /posts/{id}", uiAuth(http.HandlerFunc(app.UpdatePost)))
 	mux.Handle("POST /posts/{id}/delete", uiAuth(http.HandlerFunc(app.DeletePost)))
 	mux.Handle("POST /posts/{id}/send-now", uiAuth(http.HandlerFunc(app.SendNowPost)))
@@ -142,6 +146,8 @@ func registerProtectedRoutes(mux *http.ServeMux, uiAuth func(http.Handler) http.
 	mux.Handle("POST /settings/channels", uiAuth(http.HandlerFunc(app.CreateChannel)))
 	mux.Handle("POST /settings/channels/{id}/delete", uiAuth(http.HandlerFunc(app.DeleteChannel)))
 	mux.Handle("POST /settings/channels/{id}/test", uiAuth(http.HandlerFunc(app.TestChannel)))
+	mux.Handle("POST /settings/channels/{id}/disable", uiAuth(http.HandlerFunc(app.DisableChannel)))
+	mux.Handle("POST /settings/channels/{id}/enable", uiAuth(http.HandlerFunc(app.EnableChannel)))
 
 	mux.Handle("GET /api/v1/posts", apiAuth(http.HandlerFunc(app.APIListPosts)))
 	mux.Handle("GET /api/v1/posts/{id}", apiAuth(http.HandlerFunc(app.APIGetPost)))
@@ -149,11 +155,16 @@ func registerProtectedRoutes(mux *http.ServeMux, uiAuth func(http.Handler) http.
 	mux.Handle("PUT /api/v1/posts/{id}", apiAuth(http.HandlerFunc(app.APIUpdatePost)))
 	mux.Handle("DELETE /api/v1/posts/{id}", apiAuth(http.HandlerFunc(app.APIDeletePost)))
 	mux.Handle("POST /api/v1/posts/{id}/send-now", apiAuth(http.HandlerFunc(app.APISendNowPost)))
+	mux.Handle("GET /api/v1/posts/{id}/attempts", apiAuth(http.HandlerFunc(app.APIListPostAttempts)))
+	mux.Handle("POST /api/v1/posts/bulk/send-now", apiAuth(http.HandlerFunc(app.APIBulkSendNowPosts)))
+	mux.Handle("POST /api/v1/posts/bulk/channels", apiAuth(http.HandlerFunc(app.APIBulkSetPostChannels)))
 	mux.Handle("GET /api/v1/settings/status", apiAuth(http.HandlerFunc(app.APISettingsStatus)))
 	mux.Handle("GET /api/v1/channels", apiAuth(http.HandlerFunc(app.APIListChannels)))
 	mux.Handle("POST /api/v1/channels", apiAuth(http.HandlerFunc(app.APICreateChannel)))
 	mux.Handle("DELETE /api/v1/channels/{id}", apiAuth(http.HandlerFunc(app.APIDeleteChannel)))
 	mux.Handle("POST /api/v1/channels/{id}/test", apiAuth(http.HandlerFunc(app.APITestChannel)))
+	mux.Handle("POST /api/v1/channels/{id}/disable", apiAuth(http.HandlerFunc(app.APIDisableChannel)))
+	mux.Handle("POST /api/v1/channels/{id}/enable", apiAuth(http.HandlerFunc(app.APIEnableChannel)))
 }
 
 func buildPublisher(cfg config.Config, logger *slog.Logger) (publisher.Publisher, string) {

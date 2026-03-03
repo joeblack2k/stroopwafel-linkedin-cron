@@ -7,6 +7,7 @@ import (
 	"io"
 	"log/slog"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -334,4 +335,50 @@ func mustCreateChannel(t *testing.T, store *db.Store, name string) model.Channel
 		t.Fatalf("create channel: %v", err)
 	}
 	return channel
+}
+
+func TestRunDueFailsWhenAllAssignedChannelsDisabled(t *testing.T) {
+	t.Parallel()
+
+	store, _ := newTestStore(t)
+	now := time.Date(2026, 3, 2, 12, 0, 0, 0, time.UTC)
+
+	post := mustCreatePost(t, store, model.StatusScheduled, ptrTime(now.Add(-2*time.Minute)))
+	channel := mustCreateChannel(t, store, "Disabled channel")
+	if _, err := store.SetChannelStatus(context.Background(), channel.ID, model.ChannelStatusDisabled, nil); err != nil {
+		t.Fatalf("disable channel: %v", err)
+	}
+	if err := store.ReplacePostChannels(context.Background(), post.ID, []int64{channel.ID}); err != nil {
+		t.Fatalf("replace post channels: %v", err)
+	}
+
+	service := NewService(store, publisher.NewDryRunPublisher(testLogger()), testLogger())
+	service.SetNow(func() time.Time { return now })
+
+	processed, err := service.RunDue(context.Background())
+	if err != nil {
+		t.Fatalf("run due: %v", err)
+	}
+	if processed != 1 {
+		t.Fatalf("expected one processed post, got %d", processed)
+	}
+
+	updated, err := store.GetPost(context.Background(), post.ID)
+	if err != nil {
+		t.Fatalf("get post: %v", err)
+	}
+	if updated.Status != model.StatusFailed {
+		t.Fatalf("expected failed status, got %s", updated.Status)
+	}
+	if updated.LastError == nil || !strings.Contains(*updated.LastError, "disabled") {
+		t.Fatalf("expected disabled-channel error, got %v", updated.LastError)
+	}
+
+	_, exists, err := store.GetLatestPublishAttempt(context.Background(), post.ID, channel.ID)
+	if err != nil {
+		t.Fatalf("get latest publish attempt: %v", err)
+	}
+	if exists {
+		t.Fatal("expected no publish attempts for disabled channels")
+	}
 }

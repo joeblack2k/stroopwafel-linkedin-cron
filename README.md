@@ -112,10 +112,16 @@ Security behavior:
 - `POST /posts/{id}`
 - `POST /posts/{id}/delete`
 - `POST /posts/{id}/send-now`
+- `GET /posts/{id}/history`
+- `GET /posts/bulk`
+- `POST /posts/bulk/channels`
+- `POST /posts/bulk/send-now`
 - `GET /settings`
 - `GET /settings/channels`
 - `POST /settings/channels`
 - `POST /settings/channels/{id}/test`
+- `POST /settings/channels/{id}/disable`
+- `POST /settings/channels/{id}/enable`
 - `POST /settings/channels/{id}/delete`
 
 ## JSON API Endpoints
@@ -127,11 +133,16 @@ Security behavior:
 - `PUT /api/v1/posts/{id}`
 - `DELETE /api/v1/posts/{id}`
 - `POST /api/v1/posts/{id}/send-now`
+- `GET /api/v1/posts/{id}/attempts`
+- `POST /api/v1/posts/bulk/send-now`
+- `POST /api/v1/posts/bulk/channels`
 - `GET /api/v1/settings/status`
 - `GET /api/v1/channels`
 - `POST /api/v1/channels`
 - `DELETE /api/v1/channels/{id}`
 - `POST /api/v1/channels/{id}/test`
+- `POST /api/v1/channels/{id}/disable`
+- `POST /api/v1/channels/{id}/enable`
 
 Notes:
 
@@ -150,7 +161,7 @@ Every run selects posts where:
 
 Batch size is 100 per run.
 
-For posts with channel assignments, the scheduler executes each `(post, channel)` target independently and writes attempt rows to `publish_attempts`. Post status is reconciled from channel results.
+For posts with channel assignments, the scheduler executes each `(post, channel)` target independently and writes attempt rows to `publish_attempts`. Post status is reconciled from channel results. Disabled channels are skipped; if all assigned channels are disabled, the post is marked failed.
 
 Retry policy for publish failures:
 

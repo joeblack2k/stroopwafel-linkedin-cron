@@ -2,6 +2,7 @@ package scheduler
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -102,7 +103,34 @@ func (s *Service) processPost(ctx context.Context, post model.Post, force bool) 
 	if len(channels) == 0 {
 		return s.attemptLegacyPublish(ctx, post)
 	}
-	return s.processChannelTargets(ctx, post, channels, force)
+
+	eligibleChannels := make([]model.Channel, 0, len(channels))
+	for _, channel := range channels {
+		if channel.Status == model.ChannelStatusDisabled {
+			continue
+		}
+		eligibleChannels = append(eligibleChannels, channel)
+	}
+
+	if len(eligibleChannels) == 0 {
+		now := s.now().UTC()
+		message := "all assigned channels are disabled"
+		if updateErr := s.store.SetPostState(ctx, post.ID, model.StatusFailed, nil, post.FailCount+1, &message, nil, now); updateErr != nil {
+			return fmt.Errorf("mark post %d failed for disabled channels: %w", post.ID, updateErr)
+		}
+		s.logger.LogAttrs(
+			ctx,
+			slog.LevelWarn,
+			"post skipped because all channels are disabled",
+			slog.String("component", "scheduler"),
+			slog.Int64("post_id", post.ID),
+			slog.String("status", string(model.StatusFailed)),
+			slog.String("error", message),
+		)
+		return errors.New(message)
+	}
+
+	return s.processChannelTargets(ctx, post, eligibleChannels, force)
 }
 
 func (s *Service) processChannelTargets(ctx context.Context, post model.Post, channels []model.Channel, force bool) error {

@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{.Title}} · linkedin-cron</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <header class="topbar">
+    <h1>linkedin-cron</h1>
+    <nav>
+      <a href="/calendar">Calendar</a>
+      <a href="/posts/new">New Post</a>
+      <a href="/posts/bulk">Bulk</a>
+      <a href="/settings">Settings</a>
+      <a href="/settings/channels">Channels</a>
+    </nav>
+  </header>
+
+  <main class="container">
+    <h2>Bulk actions</h2>
+    {{if .Message}}<div class="notice success">{{.Message}}</div>{{end}}
+    {{if .Error}}<div class="notice error">{{.Error}}</div>{{end}}
+
+    <form method="post" action="/posts/bulk/channels" class="stack">
+      <section class="actions">
+        <h3>Select posts</h3>
+        <p class="muted">Showing the most recent {{len .Posts}} posts.</p>
+        <table>
+          <thead>
+            <tr>
+              <th>Select</th>
+              <th>ID</th>
+              <th>Status</th>
+              <th>Scheduled</th>
+              <th>Text</th>
+            </tr>
+          </thead>
+          <tbody>
+            {{if .Posts}}
+              {{range .Posts}}
+                <tr>
+                  <td><input type="checkbox" name="post_ids" value="{{.ID}}"></td>
+                  <td>{{.ID}}</td>
+                  <td>{{.Status}}</td>
+                  <td>{{fmtTime .ScheduledAt $.Location}}</td>
+                  <td>{{.Text}}</td>
+                </tr>
+              {{end}}
+            {{else}}
+              <tr>
+                <td colspan="5" class="muted">No posts available</td>
+              </tr>
+            {{end}}
+          </tbody>
+        </table>
+      </section>
+
+      <section class="actions">
+        <h3>Set channels for selected posts</h3>
+        <p class="muted">If no channels are selected, assignments are cleared. Scheduled posts may not be left without channels.</p>
+        <fieldset>
+          <legend>Channels</legend>
+          {{if .Channels}}
+            {{range .Channels}}
+              <label class="checkbox-row">
+                <input type="checkbox" name="channel_ids" value="{{.ID}}">
+                <span>{{.DisplayName}} ({{.Type}} · {{.Status}})</span>
+              </label>
+            {{end}}
+          {{else}}
+            <p class="muted">No channels configured yet.</p>
+          {{end}}
+        </fieldset>
+      </section>
+
+      <div class="button-row">
+        <button type="submit" formaction="/posts/bulk/channels">Apply channels</button>
+        <button type="submit" formaction="/posts/bulk/send-now">Send now selected</button>
+      </div>
+    </form>
+  </main>
+</body>
+</html>

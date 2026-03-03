@@ -442,3 +442,101 @@ func trimStringPointer(value *string) *string {
 	}
 	return &trimmed
 }
+
+func (a *App) DisableChannel(w http.ResponseWriter, r *http.Request) {
+	id, err := parseID(r.PathValue("id"))
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+
+	updated, err := a.Store.SetChannelStatus(r.Context(), id, model.ChannelStatusDisabled, nil)
+	if err != nil {
+		if errors.Is(err, db.ErrNotFound) {
+			http.NotFound(w, r)
+			return
+		}
+		a.renderChannelsPage(w, r, http.StatusInternalServerError, ChannelFormInput{}, "", "failed to disable channel")
+		return
+	}
+
+	msg := fmt.Sprintf("Channel %q disabled", updated.DisplayName)
+	http.Redirect(w, r, "/settings/channels?msg="+url.QueryEscape(msg), http.StatusSeeOther)
+}
+
+func (a *App) EnableChannel(w http.ResponseWriter, r *http.Request) {
+	id, err := parseID(r.PathValue("id"))
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+
+	if _, err := a.Store.SetChannelStatus(r.Context(), id, model.ChannelStatusActive, nil); err != nil {
+		if errors.Is(err, db.ErrNotFound) {
+			http.NotFound(w, r)
+			return
+		}
+		a.renderChannelsPage(w, r, http.StatusInternalServerError, ChannelFormInput{}, "", "failed to enable channel")
+		return
+	}
+
+	tested, err := a.runChannelTest(r.Context(), id)
+	if err != nil {
+		if errors.Is(err, db.ErrNotFound) {
+			http.NotFound(w, r)
+			return
+		}
+		a.renderChannelsPage(w, r, http.StatusInternalServerError, ChannelFormInput{}, "", "failed to re-test channel")
+		return
+	}
+
+	msg := fmt.Sprintf("Channel %q enabled (status: %s)", tested.DisplayName, tested.Status)
+	http.Redirect(w, r, "/settings/channels?msg="+url.QueryEscape(msg), http.StatusSeeOther)
+}
+
+func (a *App) APIDisableChannel(w http.ResponseWriter, r *http.Request) {
+	id, err := parseID(r.PathValue("id"))
+	if err != nil {
+		writeAPIError(w, http.StatusBadRequest, "invalid channel id")
+		return
+	}
+
+	updated, err := a.Store.SetChannelStatus(r.Context(), id, model.ChannelStatusDisabled, nil)
+	if err != nil {
+		if errors.Is(err, db.ErrNotFound) {
+			writeAPIError(w, http.StatusNotFound, "channel not found")
+			return
+		}
+		writeAPIError(w, http.StatusInternalServerError, "failed to disable channel")
+		return
+	}
+	writeJSON(w, http.StatusOK, mapChannelResponse(updated))
+}
+
+func (a *App) APIEnableChannel(w http.ResponseWriter, r *http.Request) {
+	id, err := parseID(r.PathValue("id"))
+	if err != nil {
+		writeAPIError(w, http.StatusBadRequest, "invalid channel id")
+		return
+	}
+
+	if _, err := a.Store.SetChannelStatus(r.Context(), id, model.ChannelStatusActive, nil); err != nil {
+		if errors.Is(err, db.ErrNotFound) {
+			writeAPIError(w, http.StatusNotFound, "channel not found")
+			return
+		}
+		writeAPIError(w, http.StatusInternalServerError, "failed to enable channel")
+		return
+	}
+
+	tested, err := a.runChannelTest(r.Context(), id)
+	if err != nil {
+		if errors.Is(err, db.ErrNotFound) {
+			writeAPIError(w, http.StatusNotFound, "channel not found")
+			return
+		}
+		writeAPIError(w, http.StatusInternalServerError, "failed to re-test channel")
+		return
+	}
+	writeJSON(w, http.StatusOK, mapChannelResponse(tested))
+}

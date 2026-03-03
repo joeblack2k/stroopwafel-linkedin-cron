@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{.Title}} · linkedin-cron</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <header class="topbar">
+    <h1>linkedin-cron</h1>
+    <nav>
+      <a href="/calendar">Calendar</a>
+      <a href="/posts/new">New Post</a>
+      <a href="/posts/bulk">Bulk</a>
+      <a href="/settings">Settings</a>
+      <a href="/settings/channels">Channels</a>
+    </nav>
+  </header>
+
+  <main class="container">
+    <h2>Post {{.Post.ID}} History</h2>
+    {{if .Message}}<div class="notice success">{{.Message}}</div>{{end}}
+    {{if .Error}}<div class="notice error">{{.Error}}</div>{{end}}
+
+    <section class="actions">
+      <p><strong>Status:</strong> {{.Post.Status}} · <strong>Text:</strong> {{.Post.Text}}</p>
+      <form method="get" action="/posts/{{.Post.ID}}/history" class="stack">
+        <input type="hidden" name="return_to" value="{{.ReturnTo}}">
+        <label>
+          Status filter
+          <select name="status">
+            <option value="">all</option>
+            <option value="sent" {{if eq .SelectedStatus "sent"}}selected{{end}}>sent</option>
+            <option value="retry" {{if eq .SelectedStatus "retry"}}selected{{end}}>retry</option>
+            <option value="failed" {{if eq .SelectedStatus "failed"}}selected{{end}}>failed</option>
+          </select>
+        </label>
+        <label>
+          Channel filter
+          <select name="channel_id">
+            <option value="">all</option>
+            {{range .Channels}}
+              <option value="{{.ID}}" {{if eq $.SelectedChannelID .ID}}selected{{end}}>{{.DisplayName}} ({{.Type}})</option>
+            {{end}}
+          </select>
+        </label>
+        <div class="button-row">
+          <button type="submit">Apply filters</button>
+          <a class="button" href="/posts/{{.Post.ID}}/edit?return_to={{.ReturnTo}}">Back to post</a>
+        </div>
+      </form>
+    </section>
+
+    <section class="actions">
+      <h3>Attempts</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>Attempted at</th>
+            <th>Channel</th>
+            <th>Status</th>
+            <th>Attempt #</th>
+            <th>Error</th>
+            <th>Retry at</th>
+            <th>External ID</th>
+          </tr>
+        </thead>
+        <tbody>
+          {{if .Attempts}}
+            {{range .Attempts}}
+              <tr>
+                <td>{{.AttemptedAt}}</td>
+                <td>{{.ChannelName}} ({{.ChannelType}})</td>
+                <td>{{.Status}}</td>
+                <td>{{.AttemptNo}}</td>
+                <td>{{.Error}}</td>
+                <td>{{.RetryAt}}</td>
+                <td>{{.ExternalID}}</td>
+              </tr>
+            {{end}}
+          {{else}}
+            <tr>
+              <td colspan="7" class="muted">No attempts found for current filters</td>
+            </tr>
+          {{end}}
+        </tbody>
+      </table>
+    </section>
+  </main>
+</body>
+</html>

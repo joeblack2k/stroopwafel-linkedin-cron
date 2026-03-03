@@ -47,16 +47,31 @@ Bring the product closer to Postiz by introducing channel management and post-to
    - Scheduled posts now require at least one channel (UI + API validation)
    - Channel create form includes dynamic type-based validation hints
 
-## Sprint C (next)
+## Sprint C (in progress)
 
-1. **Credential UX hardening**
-   - Optional per-channel credential rotation flow
-   - Soft-disable channel without deleting history
+### Implemented in this iteration
+
+1. **Channel safety controls**
+   - Soft-disable/enable channel from UI and API
+   - Disabled channels are skipped by scheduler; posts with only disabled channels fail fast
 
 2. **History views**
-   - UI/API view for per-channel publish attempts per post
-   - Filter by status/date/channel
+   - UI: `GET /posts/{id}/history` with status/channel filters
+   - API: `GET /api/v1/posts/{id}/attempts`
 
 3. **Bulk operations**
-   - Bulk assign channels to selected posts
-   - Bulk schedule send-now
+   - UI: `GET /posts/bulk`
+   - UI actions: `POST /posts/bulk/channels`, `POST /posts/bulk/send-now`
+   - API actions: `POST /api/v1/posts/bulk/channels`, `POST /api/v1/posts/bulk/send-now`
+
+### Remaining Sprint C scope
+
+1. **Credential UX hardening**
+   - Per-channel credential rotation/edit workflow from GUI/API
+   - Explicit secret replacement semantics (keep/replace/clear)
+
+2. **History UX polish**
+   - Date-range filtering and pagination for large histories
+
+3. **Bulk UX polish**
+   - Saved selections, safer confirmation UX, and partial-failure retry helpers

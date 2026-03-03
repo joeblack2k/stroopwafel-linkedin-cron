@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"linkedin-cron/internal/model"
@@ -196,4 +197,51 @@ func scanPublishAttempt(s scanner) (model.PublishAttempt, error) {
 		attempt.ExternalID = &value
 	}
 	return attempt, nil
+}
+
+func (s *Store) ListPublishAttemptsForPost(ctx context.Context, postID int64, channelID *int64, status string, limit int) ([]model.PublishAttempt, error) {
+	if limit <= 0 {
+		limit = 200
+	}
+	if limit > 500 {
+		limit = 500
+	}
+
+	query := `SELECT id, post_id, channel_id, attempt_no, attempted_at, status, error, retry_at, external_id
+	 FROM publish_attempts
+	 WHERE post_id = ?`
+	args := []any{postID}
+
+	if channelID != nil && *channelID > 0 {
+		query += ` AND channel_id = ?`
+		args = append(args, *channelID)
+	}
+	trimmedStatus := strings.TrimSpace(status)
+	if trimmedStatus != "" {
+		query += ` AND status = ?`
+		args = append(args, trimmedStatus)
+	}
+
+	query += ` ORDER BY attempted_at DESC, id DESC LIMIT ?`
+	args = append(args, limit)
+
+	rows, err := s.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("list publish attempts for post %d: %w", postID, err)
+	}
+	defer rows.Close()
+
+	attempts := make([]model.PublishAttempt, 0)
+	for rows.Next() {
+		attempt, scanErr := scanPublishAttempt(rows)
+		if scanErr != nil {
+			return nil, fmt.Errorf("scan publish attempt row: %w", scanErr)
+		}
+		attempts = append(attempts, attempt)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate publish attempts rows: %w", err)
+	}
+
+	return attempts, nil
 }
