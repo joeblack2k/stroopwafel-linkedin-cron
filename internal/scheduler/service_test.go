@@ -3,11 +3,15 @@ package scheduler
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"io"
 	"log/slog"
+	"net/http"
+	"net/http/httptest"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -380,5 +384,130 @@ func TestRunDueFailsWhenAllAssignedChannelsDisabled(t *testing.T) {
 	}
 	if exists {
 		t.Fatal("expected no publish attempts for disabled channels")
+	}
+}
+
+func TestRunDueEmitsLifecycleEvents(t *testing.T) {
+	t.Parallel()
+
+	store, _ := newTestStore(t)
+	now := time.Date(2026, 3, 2, 12, 0, 0, 0, time.UTC)
+
+	post := mustCreatePost(t, store, model.StatusScheduled, ptrTime(now.Add(-2*time.Minute)))
+	channel := mustCreateChannel(t, store, "Lifecycle Channel")
+	if err := store.ReplacePostChannels(context.Background(), post.ID, []int64{channel.ID}); err != nil {
+		t.Fatalf("replace post channels: %v", err)
+	}
+
+	pub := &stubPublisher{}
+	service := NewService(store, publisher.NewDryRunPublisher(testLogger()), testLogger())
+	service.SetNow(func() time.Time { return now })
+	service.SetChannelPublisherResolver(func(ch model.Channel) publisher.Publisher {
+		if ch.ID == channel.ID {
+			return pub
+		}
+		return nil
+	})
+
+	var (
+		mu         sync.Mutex
+		eventNames []string
+	)
+	service.SetEventNotifier(func(ctx context.Context, eventName string, payload map[string]any) {
+		mu.Lock()
+		defer mu.Unlock()
+		eventNames = append(eventNames, eventName)
+	})
+
+	processed, err := service.RunDue(context.Background())
+	if err != nil {
+		t.Fatalf("run due: %v", err)
+	}
+	if processed != 1 {
+		t.Fatalf("expected processed=1, got %d", processed)
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+	if len(eventNames) < 2 {
+		t.Fatalf("expected at least 2 lifecycle events, got %d", len(eventNames))
+	}
+
+	containsAttempt := false
+	containsPostState := false
+	for _, eventName := range eventNames {
+		if eventName == "publish.attempt.created" {
+			containsAttempt = true
+		}
+		if eventName == "post.state.changed" {
+			containsPostState = true
+		}
+	}
+	if !containsAttempt {
+		t.Fatalf("expected publish.attempt.created event, got %+v", eventNames)
+	}
+	if !containsPostState {
+		t.Fatalf("expected post.state.changed event, got %+v", eventNames)
+	}
+}
+
+func TestRunDueNotifierCanForwardToWebhookEndpoint(t *testing.T) {
+	t.Parallel()
+
+	store, _ := newTestStore(t)
+	now := time.Date(2026, 3, 2, 12, 0, 0, 0, time.UTC)
+
+	post := mustCreatePost(t, store, model.StatusScheduled, ptrTime(now.Add(-2*time.Minute)))
+	channel := mustCreateChannel(t, store, "Webhook Channel")
+	if err := store.ReplacePostChannels(context.Background(), post.ID, []int64{channel.ID}); err != nil {
+		t.Fatalf("replace post channels: %v", err)
+	}
+
+	pub := &stubPublisher{}
+	service := NewService(store, publisher.NewDryRunPublisher(testLogger()), testLogger())
+	service.SetNow(func() time.Time { return now })
+	service.SetChannelPublisherResolver(func(ch model.Channel) publisher.Publisher {
+		if ch.ID == channel.ID {
+			return pub
+		}
+		return nil
+	})
+
+	var (
+		mu       sync.Mutex
+		received []map[string]any
+	)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		defer r.Body.Close()
+		var payload map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&payload); err == nil {
+			mu.Lock()
+			received = append(received, payload)
+			mu.Unlock()
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	service.SetEventNotifier(func(ctx context.Context, eventName string, payload map[string]any) {
+		envelope := map[string]any{"event": eventName, "payload": payload}
+		body, _ := json.Marshal(envelope)
+		req, _ := http.NewRequestWithContext(ctx, http.MethodPost, server.URL, strings.NewReader(string(body)))
+		req.Header.Set("Content-Type", "application/json")
+		_, _ = http.DefaultClient.Do(req)
+	})
+
+	processed, err := service.RunDue(context.Background())
+	if err != nil {
+		t.Fatalf("run due: %v", err)
+	}
+	if processed != 1 {
+		t.Fatalf("expected processed=1, got %d", processed)
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+	if len(received) == 0 {
+		t.Fatalf("expected forwarded webhook payloads")
 	}
 }

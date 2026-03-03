@@ -9,10 +9,12 @@ import (
 	"linkedin-cron/internal/config"
 	"linkedin-cron/internal/db"
 	"linkedin-cron/internal/facebook"
+	"linkedin-cron/internal/instagram"
 	"linkedin-cron/internal/linkedin"
 	"linkedin-cron/internal/model"
 	"linkedin-cron/internal/publisher"
 	"linkedin-cron/internal/scheduler"
+	"linkedin-cron/internal/webhooks"
 )
 
 func main() {
@@ -45,6 +47,11 @@ func main() {
 	service := scheduler.NewService(db.NewStore(database), pub, logger)
 	service.SetChannelPublisherResolver(func(channel model.Channel) publisher.Publisher {
 		return buildChannelPublisher(channel, logger)
+	})
+
+	webhookDispatcher := webhooks.NewDispatcher(cfg.WebhookURLs, cfg.WebhookSecret, "scheduler", logger)
+	service.SetEventNotifier(func(ctx context.Context, eventName string, payload map[string]any) {
+		webhookDispatcher.Emit(ctx, eventName, payload)
 	})
 
 	processed, err := service.RunDue(context.Background())
@@ -98,6 +105,17 @@ func buildChannelPublisher(channel model.Channel, logger *slog.Logger) publisher
 			baseURL,
 			derefNullableString(channel.FacebookPageAccessToken),
 			derefNullableString(channel.FacebookPageID),
+			logger,
+		)
+	case model.ChannelTypeInstagram:
+		baseURL := strings.TrimSpace(derefNullableString(channel.InstagramAPIBaseURL))
+		if baseURL == "" {
+			baseURL = "https://graph.facebook.com/v22.0"
+		}
+		return instagram.NewPublisher(
+			baseURL,
+			derefNullableString(channel.InstagramAccessToken),
+			derefNullableString(channel.InstagramBusinessAccountID),
 			logger,
 		)
 	case model.ChannelTypeDryRun:

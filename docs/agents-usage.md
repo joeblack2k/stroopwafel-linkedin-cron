@@ -27,12 +27,37 @@ This runbook is for agents that operate the API while we close Postiz parity gap
    - `POST /api/v1/posts/bulk/channels`
    - `POST /api/v1/posts/bulk/send-now`
 
+## Pagination/filter/search
+
+- `GET /api/v1/posts` supports: `limit`, `offset`, `status`, `channel_id`, `q`, `scheduled_from`, `scheduled_to`.
+- `GET /api/v1/channels` supports: `limit`, `offset`, `type`, `status`, `q`.
+- Both list endpoints return `{ "items": [...], "pagination": {...} }`.
+
 ## Idempotency behavior (mutating endpoints)
 
 - Send `Idempotency-Key: <unique-key>` with mutating API requests.
 - Same key + same payload returns stored response with `X-Idempotent-Replay: true`.
 - Same key + different payload returns `409` conflict.
 - Use a fresh key per logical action from an agent workflow step.
+
+## Webhook lifecycle events
+
+- Configure endpoints via `APP_WEBHOOK_URLS` (comma-separated `http(s)` URLs).
+- Optional signing secret via `APP_WEBHOOK_SECRET`.
+- Emitted events:
+  - `publish.attempt.created`
+  - `post.state.changed`
+- Headers:
+  - `X-Stroopwafel-Event`
+  - `X-Stroopwafel-Event-Id`
+  - `X-Stroopwafel-Timestamp`
+  - `X-Stroopwafel-Signature` (when secret configured)
+
+## OpenAPI + error catalog
+
+- OpenAPI YAML endpoint: `GET /api/v1/meta/openapi`
+- Error catalog endpoint: `GET /api/v1/meta/error-codes`
+- Error response shape: `{ "error": "...", "error_code": "..." }`
 
 ## API parity checklist (weighted)
 
@@ -45,14 +70,14 @@ This runbook is for agents that operate the API while we close Postiz parity gap
 - [x] **6** Bulk operations with partial-failure payload
 - [x] **8** Guardrails + channel rules
 - [x] **6** Idempotency keys for mutating endpoints
-- [ ] **6** Pagination/filter/search on list endpoints
-- [ ] **8** Publish lifecycle webhooks
-- [ ] **6** OpenAPI + stable error code catalog
+- [x] **6** Pagination/filter/search on list endpoints
+- [x] **8** Publish lifecycle webhooks
+- [x] **6** OpenAPI + stable error code catalog
 
-**Current API score:** `60/70`
+**Current API score:** `70/70`
 
 ## Parity gate status
 
 - Project gate requirement: `>=80/100`.
-- Current project score: `90/100`.
+- Current project score: `100/100`.
 - Gate status: `met`.

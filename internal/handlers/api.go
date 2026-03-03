@@ -44,6 +44,11 @@ type postResponse struct {
 	ChannelIDs  []int64 `json:"channel_ids,omitempty"`
 }
 
+type postsListResponse struct {
+	Items      []postResponse     `json:"items"`
+	Pagination paginationResponse `json:"pagination"`
+}
+
 func (a *App) APIHealthz(w http.ResponseWriter, r *http.Request) {
 	a.handleHealth(w, r, "api")
 }
@@ -53,7 +58,46 @@ func (a *App) APISettingsStatus(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *App) APIListPosts(w http.ResponseWriter, r *http.Request) {
-	posts, err := a.Store.ListPosts(r.Context())
+	statusRaw := strings.TrimSpace(r.URL.Query().Get("status"))
+	status := model.PostStatus(statusRaw)
+	if statusRaw != "" && !status.Valid() {
+		writeAPIError(w, http.StatusBadRequest, "invalid status filter")
+		return
+	}
+
+	var channelID *int64
+	if rawChannelID := strings.TrimSpace(r.URL.Query().Get("channel_id")); rawChannelID != "" {
+		parsedChannelID, parseErr := parseID(rawChannelID)
+		if parseErr != nil {
+			writeAPIError(w, http.StatusBadRequest, "invalid channel_id")
+			return
+		}
+		channelID = &parsedChannelID
+	}
+
+	scheduledFrom, scheduledTo, rangeErr := parseAttemptedRangeRFC3339(r.URL.Query().Get("scheduled_from"), r.URL.Query().Get("scheduled_to"))
+	if rangeErr != nil {
+		writeAPIError(w, http.StatusBadRequest, strings.NewReplacer("attempted_from", "scheduled_from", "attempted_to", "scheduled_to", "attempted_", "scheduled_").Replace(rangeErr.Error()))
+		return
+	}
+
+	limit := parseLimit(r.URL.Query().Get("limit"), 50)
+	offset := parseOffset(r.URL.Query().Get("offset"), 0)
+	filter := db.PostListFilter{
+		Status:        status,
+		SearchQuery:   strings.TrimSpace(r.URL.Query().Get("q")),
+		ChannelID:     channelID,
+		ScheduledFrom: scheduledFrom,
+		ScheduledTo:   scheduledTo,
+	}
+
+	total, err := a.Store.CountPostsFiltered(r.Context(), filter)
+	if err != nil {
+		writeAPIError(w, http.StatusInternalServerError, "failed to count posts")
+		return
+	}
+
+	posts, err := a.Store.ListPostsFiltered(r.Context(), filter, limit, offset)
 	if err != nil {
 		writeAPIError(w, http.StatusInternalServerError, "failed to list posts")
 		return
@@ -68,7 +112,11 @@ func (a *App) APIListPosts(w http.ResponseWriter, r *http.Request) {
 		}
 		response = append(response, mapped)
 	}
-	writeJSON(w, http.StatusOK, response)
+
+	writeJSON(w, http.StatusOK, postsListResponse{
+		Items:      response,
+		Pagination: buildPagination(limit, offset, total),
+	})
 }
 
 func (a *App) APIGetPost(w http.ResponseWriter, r *http.Request) {

@@ -26,11 +26,11 @@ Out of scope (for this phase):
 - [x] **6** Bulk API operations with partial-failure envelope (`requested/succeeded/failed/errors`)
 - [x] **8** Scheduling guardrails + per-channel posting rules
 - [x] **6** Idempotency keys on mutating API endpoints (`Idempotency-Key` replay + mismatch conflict)
-- [ ] **6** Pagination/filter/search for `GET /api/v1/posts` and `GET /api/v1/channels`
-- [ ] **8** Publish lifecycle webhooks (delivery events)
-- [ ] **6** OpenAPI contract + stable machine-readable error catalog
+- [x] **6** Pagination/filter/search for `GET /api/v1/posts` and `GET /api/v1/channels`
+- [x] **8** Publish lifecycle webhooks (delivery events)
+- [x] **6** OpenAPI contract + stable machine-readable error catalog
 
-**API subtotal:** `60/70`
+**API subtotal:** `70/70`
 
 ### GUI checklist (30 points)
 
@@ -44,25 +44,18 @@ Out of scope (for this phase):
 
 ## Score summary
 
-- **Current verified score:** `90/100`
+- **Current verified score:** `100/100`
 - **Gate target:** `>=80/100`
 - **Gate status:** `met`
 
-## Execution plan (API-first -> GUI)
+## P1 result (completed)
 
-### Phase A (P0) — parity gate
+1. ✅ Added pagination/filter/search on post and channel list APIs.
+2. ✅ Published OpenAPI contract and machine-readable error catalog.
+3. ✅ Added outbound publish lifecycle webhooks (`publish.attempt.created`, `post.state.changed`).
 
-1. ✅ Add idempotency key support for mutating `/api/v1/*` routes.
-2. ✅ Add replay/conflict tests for identical key behavior.
-3. ✅ Recompute score and update docs (`todo.md`, `README.md`, `docs/agents-usage.md`).
+## Next focus (Phase 2)
 
-### Phase B (P1) — API parity hardening
-
-1. Add pagination/filter/search for post and channel list APIs.
-2. Publish OpenAPI spec and error code catalog.
-3. Add outbound webhook events for publish lifecycle.
-
-### Phase C (P2) — GUI parity follow-through
-
-1. Add webhook delivery health/status panel in Settings.
+1. Add webhook delivery health panel in Settings.
 2. Add richer analytics slices (date/channel filters) without increasing frontend weight.
+3. Add webhook retry queue/attempt history for stronger delivery guarantees.

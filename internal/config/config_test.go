@@ -152,3 +152,18 @@ func TestLoadReadsPersistedConfig(t *testing.T) {
 		t.Fatal("expected facebook config from persisted config")
 	}
 }
+
+func TestParseWebhookURLs(t *testing.T) {
+	t.Parallel()
+
+	urls := parseWebhookURLs("https://a.example/hook, https://b.example/hook ; invalid://nope ; https://a.example/hook")
+	if len(urls) != 2 {
+		t.Fatalf("expected 2 webhook urls, got %d", len(urls))
+	}
+	if urls[0] != "https://a.example/hook" {
+		t.Fatalf("unexpected first webhook url: %q", urls[0])
+	}
+	if urls[1] != "https://b.example/hook" {
+		t.Fatalf("unexpected second webhook url: %q", urls[1])
+	}
+}

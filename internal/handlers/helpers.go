@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 
 	"linkedin-cron/internal/config"
 	"linkedin-cron/internal/db"
@@ -65,6 +66,9 @@ type SettingsStatus struct {
 	DBPath              string `json:"db_path"`
 	Timezone            string `json:"timezone"`
 	MigrationStatus     string `json:"migration_status"`
+	WebhookConfigured   bool   `json:"webhook_configured"`
+	WebhookTargets      int    `json:"webhook_targets"`
+	MaskedWebhookKey    string `json:"masked_webhook_secret"`
 }
 
 type paginationResponse struct {
@@ -239,6 +243,9 @@ func (a *App) settingsStatus() SettingsStatus {
 		DBPath:              a.Config.DBPath,
 		Timezone:            a.Config.Timezone,
 		MigrationStatus:     a.MigrationStatus,
+		WebhookConfigured:   len(a.Config.WebhookURLs) > 0,
+		WebhookTargets:      len(a.Config.WebhookURLs),
+		MaskedWebhookKey:    config.MaskSecret(a.Config.WebhookSecret),
 	}
 }
 
@@ -372,7 +379,76 @@ func writeJSON(w http.ResponseWriter, status int, payload any) {
 }
 
 func writeAPIError(w http.ResponseWriter, status int, message string) {
-	writeJSON(w, status, map[string]string{"error": message})
+	errorCode := apiErrorCode(status, message)
+	writeJSON(w, status, map[string]string{"error": message, "error_code": errorCode})
+}
+
+func apiErrorCode(status int, message string) string {
+	trimmed := strings.TrimSpace(strings.ToLower(message))
+	if trimmed == "" {
+		return statusCodePrefix(status)
+	}
+
+	known := map[string]string{
+		"unauthorized":          "auth_unauthorized",
+		"invalid json payload":  "request_invalid_json",
+		"invalid post id":       "request_invalid_post_id",
+		"post not found":        "post_not_found",
+		"invalid channel id":    "request_invalid_channel_id",
+		"channel not found":     "channel_not_found",
+		"invalid status filter": "request_invalid_status_filter",
+		"invalid type filter":   "request_invalid_type_filter",
+		"invalid channel_id":    "request_invalid_channel_id",
+	}
+	if code, ok := known[trimmed]; ok {
+		return code
+	}
+
+	slug := slugify(trimmed)
+	if slug == "" {
+		return statusCodePrefix(status)
+	}
+	return statusCodePrefix(status) + "_" + slug
+}
+
+func statusCodePrefix(status int) string {
+	switch {
+	case status >= 500:
+		return "internal_error"
+	case status == http.StatusUnauthorized:
+		return "auth_error"
+	case status == http.StatusForbidden:
+		return "forbidden"
+	case status == http.StatusNotFound:
+		return "not_found"
+	case status == http.StatusConflict:
+		return "conflict"
+	case status == http.StatusTooManyRequests:
+		return "rate_limited"
+	default:
+		return "bad_request"
+	}
+}
+
+func slugify(value string) string {
+	runes := make([]rune, 0, len(value))
+	lastUnderscore := false
+	for _, r := range value {
+		if unicode.IsLetter(r) || unicode.IsDigit(r) {
+			runes = append(runes, r)
+			lastUnderscore = false
+			continue
+		}
+		if lastUnderscore || len(runes) == 0 {
+			continue
+		}
+		runes = append(runes, '_')
+		lastUnderscore = true
+	}
+	for len(runes) > 0 && runes[len(runes)-1] == '_' {
+		runes = runes[:len(runes)-1]
+	}
+	return strings.TrimSpace(string(runes))
 }
 
 func readJSONBody(r *http.Request, out any) error {

@@ -339,14 +339,22 @@ func TestAPIListChannelsIncludesSecretPreviewMetadata(t *testing.T) {
 		t.Fatalf("expected 200, got %d (%s)", recorder.Code, recorder.Body.String())
 	}
 
-	var payload []map[string]any
+	var payload struct {
+		Items      []map[string]any `json:"items"`
+		Pagination struct {
+			Total int `json:"total"`
+		} `json:"pagination"`
+	}
 	if err := json.Unmarshal(recorder.Body.Bytes(), &payload); err != nil {
 		t.Fatalf("decode channels response: %v", err)
 	}
-	if len(payload) != 1 {
-		t.Fatalf("expected 1 channel in response, got %d", len(payload))
+	if len(payload.Items) != 1 {
+		t.Fatalf("expected 1 channel in response, got %d", len(payload.Items))
 	}
-	item := payload[0]
+	if payload.Pagination.Total != 1 {
+		t.Fatalf("expected pagination total=1, got %d", payload.Pagination.Total)
+	}
+	item := payload.Items[0]
 
 	if _, exists := item["linkedin_access_token"]; exists {
 		t.Fatalf("raw linkedin_access_token must not be present in API response")
@@ -799,5 +807,201 @@ func TestAPIWeeklySnapshot(t *testing.T) {
 	}
 	if int(response["published_attempts"].(float64)) < 1 {
 		t.Fatalf("expected published_attempts >= 1, got %#v", response["published_attempts"])
+	}
+}
+
+func TestAPIListPostsSupportsPaginationAndFilters(t *testing.T) {
+	t.Parallel()
+
+	app := newAPIApp(t)
+	channelA := mustCreateDryRunChannel(t, app.Store)
+	channelB := mustCreateDryRunChannel(t, app.Store)
+	now := time.Now().UTC()
+
+	postA, err := app.Store.CreatePost(context.Background(), db.PostInput{
+		Text:        "alpha scheduled first",
+		Status:      model.StatusScheduled,
+		ScheduledAt: ptrTimeForTest(now.Add(10 * time.Minute)),
+	})
+	if err != nil {
+		t.Fatalf("create post A: %v", err)
+	}
+	if err := app.Store.ReplacePostChannels(context.Background(), postA.ID, []int64{channelA.ID}); err != nil {
+		t.Fatalf("assign channel A: %v", err)
+	}
+
+	postB, err := app.Store.CreatePost(context.Background(), db.PostInput{
+		Text:   "beta draft second",
+		Status: model.StatusDraft,
+	})
+	if err != nil {
+		t.Fatalf("create post B: %v", err)
+	}
+	if err := app.Store.ReplacePostChannels(context.Background(), postB.ID, []int64{channelB.ID}); err != nil {
+		t.Fatalf("assign channel B: %v", err)
+	}
+	_ = postB
+
+	postC, err := app.Store.CreatePost(context.Background(), db.PostInput{
+		Text:        "alpha scheduled third",
+		Status:      model.StatusScheduled,
+		ScheduledAt: ptrTimeForTest(now.Add(20 * time.Minute)),
+	})
+	if err != nil {
+		t.Fatalf("create post C: %v", err)
+	}
+	if err := app.Store.ReplacePostChannels(context.Background(), postC.ID, []int64{channelA.ID}); err != nil {
+		t.Fatalf("assign channel A to post C: %v", err)
+	}
+
+	target := "/api/v1/posts?status=scheduled&q=alpha&channel_id=" + strconv.FormatInt(channelA.ID, 10) + "&limit=1&offset=0"
+	request := httptest.NewRequest(http.MethodGet, target, nil)
+	recorder := httptest.NewRecorder()
+	app.APIListPosts(recorder, request)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d (%s)", recorder.Code, recorder.Body.String())
+	}
+
+	var response struct {
+		Items      []map[string]any `json:"items"`
+		Pagination struct {
+			Limit   int  `json:"limit"`
+			Offset  int  `json:"offset"`
+			Total   int  `json:"total"`
+			HasNext bool `json:"has_next"`
+		} `json:"pagination"`
+	}
+	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if len(response.Items) != 1 {
+		t.Fatalf("expected one item in page 1, got %d", len(response.Items))
+	}
+	if response.Pagination.Total != 2 {
+		t.Fatalf("expected total=2 filtered posts, got %d", response.Pagination.Total)
+	}
+	if !response.Pagination.HasNext {
+		t.Fatalf("expected has_next=true for first page")
+	}
+
+	request = httptest.NewRequest(http.MethodGet, "/api/v1/posts?status=scheduled&q=alpha&channel_id="+strconv.FormatInt(channelA.ID, 10)+"&limit=1&offset=1", nil)
+	recorder = httptest.NewRecorder()
+	app.APIListPosts(recorder, request)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected 200 for page 2, got %d (%s)", recorder.Code, recorder.Body.String())
+	}
+	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
+		t.Fatalf("decode response page 2: %v", err)
+	}
+	if len(response.Items) != 1 {
+		t.Fatalf("expected one item in page 2, got %d", len(response.Items))
+	}
+	if response.Pagination.Offset != 1 {
+		t.Fatalf("expected offset=1 for page 2, got %d", response.Pagination.Offset)
+	}
+}
+
+func TestAPIListChannelsSupportsPaginationAndFilters(t *testing.T) {
+	t.Parallel()
+
+	app := newAPIApp(t)
+	linkedIn, err := app.Store.CreateChannel(context.Background(), db.ChannelInput{Type: model.ChannelTypeLinkedIn, DisplayName: "LinkedIn Alpha", LinkedInAccessToken: ptrString("token"), LinkedInAuthorURN: ptrString("urn:li:organization:1")})
+	if err != nil {
+		t.Fatalf("create linkedin channel: %v", err)
+	}
+	facebook, err := app.Store.CreateChannel(context.Background(), db.ChannelInput{Type: model.ChannelTypeFacebook, DisplayName: "Facebook Beta", FacebookPageAccessToken: ptrString("token"), FacebookPageID: ptrString("123")})
+	if err != nil {
+		t.Fatalf("create facebook channel: %v", err)
+	}
+	if _, err := app.Store.SetChannelStatus(context.Background(), facebook.ID, model.ChannelStatusDisabled, nil); err != nil {
+		t.Fatalf("disable facebook channel: %v", err)
+	}
+	_, err = app.Store.CreateChannel(context.Background(), db.ChannelInput{Type: model.ChannelTypeDryRun, DisplayName: "Dry Sandbox"})
+	if err != nil {
+		t.Fatalf("create dry-run channel: %v", err)
+	}
+
+	target := "/api/v1/channels?type=linkedin&status=active&q=Alpha&limit=5&offset=0"
+	request := httptest.NewRequest(http.MethodGet, target, nil)
+	recorder := httptest.NewRecorder()
+	app.APIListChannels(recorder, request)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d (%s)", recorder.Code, recorder.Body.String())
+	}
+
+	var response struct {
+		Items      []map[string]any `json:"items"`
+		Pagination struct {
+			Total int `json:"total"`
+		} `json:"pagination"`
+	}
+	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
+		t.Fatalf("decode channels response: %v", err)
+	}
+	if len(response.Items) != 1 {
+		t.Fatalf("expected one filtered channel, got %d", len(response.Items))
+	}
+	if response.Pagination.Total != 1 {
+		t.Fatalf("expected filtered total=1, got %d", response.Pagination.Total)
+	}
+	item := response.Items[0]
+	if item["id"] == nil {
+		t.Fatalf("expected channel id in response item")
+	}
+	if displayName, _ := item["display_name"].(string); !strings.Contains(displayName, "LinkedIn") {
+		t.Fatalf("unexpected filtered channel display_name=%q", displayName)
+	}
+	if int64(item["id"].(float64)) != linkedIn.ID {
+		t.Fatalf("expected linkedin channel id %d, got %.0f", linkedIn.ID, item["id"].(float64))
+	}
+
+	request = httptest.NewRequest(http.MethodGet, "/api/v1/channels?type=unknown", nil)
+	recorder = httptest.NewRecorder()
+	app.APIListChannels(recorder, request)
+	if recorder.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for invalid type filter, got %d", recorder.Code)
+	}
+}
+
+func TestAPIErrorCatalog(t *testing.T) {
+	t.Parallel()
+
+	app := newAPIApp(t)
+	request := httptest.NewRequest(http.MethodGet, "/api/v1/meta/error-codes", nil)
+	recorder := httptest.NewRecorder()
+	app.APIErrorCatalog(recorder, request)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", recorder.Code)
+	}
+
+	var payload struct {
+		Version int `json:"version"`
+		Errors  []struct {
+			Code string `json:"code"`
+		} `json:"errors"`
+	}
+	if err := json.Unmarshal(recorder.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("decode error catalog: %v", err)
+	}
+	if payload.Version != 1 {
+		t.Fatalf("expected version=1, got %d", payload.Version)
+	}
+	if len(payload.Errors) == 0 {
+		t.Fatalf("expected at least one error catalog entry")
+	}
+}
+
+func TestAPIOpenAPI(t *testing.T) {
+	t.Parallel()
+
+	app := newAPIApp(t)
+	request := httptest.NewRequest(http.MethodGet, "/api/v1/meta/openapi", nil)
+	recorder := httptest.NewRecorder()
+	app.APIOpenAPI(recorder, request)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", recorder.Code)
+	}
+	if !strings.Contains(recorder.Body.String(), "openapi:") {
+		t.Fatalf("expected openapi yaml in response")
 	}
 }

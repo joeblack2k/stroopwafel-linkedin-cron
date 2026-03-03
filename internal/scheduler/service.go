@@ -24,6 +24,7 @@ type Service struct {
 	logger            *slog.Logger
 	now               func() time.Time
 	batchSize         int
+	eventNotifier     func(context.Context, string, map[string]any)
 }
 
 func NewService(store *db.Store, pub publisher.Publisher, logger *slog.Logger) *Service {
@@ -57,6 +58,13 @@ func (s *Service) SetChannelPublisherResolver(resolver ChannelPublisherResolver)
 		return
 	}
 	s.resolvePublisher = resolver
+}
+
+func (s *Service) SetEventNotifier(notifier func(context.Context, string, map[string]any)) {
+	if notifier == nil {
+		return
+	}
+	s.eventNotifier = notifier
 }
 
 func (s *Service) RunDue(ctx context.Context) (int, error) {
@@ -118,6 +126,12 @@ func (s *Service) processPost(ctx context.Context, post model.Post, force bool) 
 		if updateErr := s.store.SetPostState(ctx, post.ID, model.StatusFailed, nil, post.FailCount+1, &message, nil, now); updateErr != nil {
 			return fmt.Errorf("mark post %d failed for disabled channels: %w", post.ID, updateErr)
 		}
+		s.emitLifecycleEvent(ctx, "post.state.changed", map[string]any{
+			"post_id":    post.ID,
+			"status":     string(model.StatusFailed),
+			"fail_count": post.FailCount + 1,
+			"last_error": message,
+		})
 		s.logger.LogAttrs(
 			ctx,
 			slog.LevelWarn,
@@ -178,7 +192,7 @@ func (s *Service) attemptChannelPublish(ctx context.Context, post model.Post, ch
 		if validationErr := validatePostAgainstRule(post.Text, channel, rule); validationErr != nil {
 			errText := validationErr.Error()
 			errorCategory := publisher.ErrorCategoryValidation
-			_, insertErr := s.store.InsertPublishAttempt(ctx, db.PublishAttemptInput{
+			attemptRecord, insertErr := s.store.InsertPublishAttempt(ctx, db.PublishAttemptInput{
 				PostID:        post.ID,
 				ChannelID:     channel.ID,
 				AttemptNo:     attemptNo,
@@ -190,6 +204,18 @@ func (s *Service) attemptChannelPublish(ctx context.Context, post model.Post, ch
 			if insertErr != nil {
 				return fmt.Errorf("insert rule-failed publish attempt for post=%d channel=%d: %w", post.ID, channel.ID, insertErr)
 			}
+			s.emitLifecycleEvent(ctx, "publish.attempt.created", map[string]any{
+				"post_id":        post.ID,
+				"channel_id":     channel.ID,
+				"channel_type":   string(channel.Type),
+				"channel_name":   channel.DisplayName,
+				"attempt_id":     attemptRecord.ID,
+				"attempt_no":     attemptRecord.AttemptNo,
+				"status":         attemptRecord.Status,
+				"error":          errText,
+				"error_category": errorCategory,
+				"publisher":      activePublisher.Mode(),
+			})
 			s.logger.LogAttrs(
 				ctx,
 				slog.LevelError,
@@ -208,7 +234,7 @@ func (s *Service) attemptChannelPublish(ctx context.Context, post model.Post, ch
 
 	publishResult, err := activePublisher.Publish(ctx, post)
 	if err == nil {
-		_, insertErr := s.store.InsertPublishAttempt(ctx, db.PublishAttemptInput{
+		attemptRecord, insertErr := s.store.InsertPublishAttempt(ctx, db.PublishAttemptInput{
 			PostID:      post.ID,
 			ChannelID:   channel.ID,
 			AttemptNo:   attemptNo,
@@ -220,6 +246,18 @@ func (s *Service) attemptChannelPublish(ctx context.Context, post model.Post, ch
 		if insertErr != nil {
 			return fmt.Errorf("insert sent publish attempt for post=%d channel=%d: %w", post.ID, channel.ID, insertErr)
 		}
+		s.emitLifecycleEvent(ctx, "publish.attempt.created", map[string]any{
+			"post_id":      post.ID,
+			"channel_id":   channel.ID,
+			"channel_type": string(channel.Type),
+			"channel_name": channel.DisplayName,
+			"attempt_id":   attemptRecord.ID,
+			"attempt_no":   attemptRecord.AttemptNo,
+			"status":       attemptRecord.Status,
+			"external_id":  publishResult.ExternalID,
+			"permalink":    publishResult.Permalink,
+			"publisher":    activePublisher.Mode(),
+		})
 		s.logger.LogAttrs(
 			ctx,
 			slog.LevelInfo,
@@ -246,7 +284,7 @@ func (s *Service) attemptChannelPublish(ctx context.Context, post model.Post, ch
 		}
 	}
 	errText := err.Error()
-	_, insertErr := s.store.InsertPublishAttempt(ctx, db.PublishAttemptInput{
+	attemptRecord, insertErr := s.store.InsertPublishAttempt(ctx, db.PublishAttemptInput{
 		PostID:        post.ID,
 		ChannelID:     channel.ID,
 		AttemptNo:     attemptNo,
@@ -259,6 +297,19 @@ func (s *Service) attemptChannelPublish(ctx context.Context, post model.Post, ch
 	if insertErr != nil {
 		return fmt.Errorf("insert failed publish attempt for post=%d channel=%d: %w", post.ID, channel.ID, insertErr)
 	}
+
+	s.emitLifecycleEvent(ctx, "publish.attempt.created", map[string]any{
+		"post_id":        post.ID,
+		"channel_id":     channel.ID,
+		"channel_type":   string(channel.Type),
+		"channel_name":   channel.DisplayName,
+		"attempt_id":     attemptRecord.ID,
+		"attempt_no":     attemptRecord.AttemptNo,
+		"status":         attemptRecord.Status,
+		"error":          errText,
+		"error_category": errorCategory,
+		"publisher":      activePublisher.Mode(),
+	})
 
 	level := slog.LevelWarn
 	if status == model.PublishAttemptStatusFailed {
@@ -333,13 +384,48 @@ func (s *Service) reconcilePostStateFromChannels(ctx context.Context, post model
 	}
 
 	if allSent {
-		return s.store.SetPostState(ctx, post.ID, model.StatusSent, &now, 0, nil, nil, now)
+		if err := s.store.SetPostState(ctx, post.ID, model.StatusSent, &now, 0, nil, nil, now); err != nil {
+			return err
+		}
+		s.emitLifecycleEvent(ctx, "post.state.changed", map[string]any{
+			"post_id": post.ID,
+			"status":  string(model.StatusSent),
+			"sent_at": now.UTC().Format(time.RFC3339),
+		})
+		return nil
 	}
 	if anyRetry || anyPending {
-		return s.store.SetPostState(ctx, post.ID, model.StatusScheduled, nil, failCount, lastError, earliestRetry, now)
+		if err := s.store.SetPostState(ctx, post.ID, model.StatusScheduled, nil, failCount, lastError, earliestRetry, now); err != nil {
+			return err
+		}
+		payload := map[string]any{
+			"post_id":    post.ID,
+			"status":     string(model.StatusScheduled),
+			"fail_count": failCount,
+		}
+		if lastError != nil {
+			payload["last_error"] = *lastError
+		}
+		if earliestRetry != nil {
+			payload["next_retry_at"] = earliestRetry.UTC().Format(time.RFC3339)
+		}
+		s.emitLifecycleEvent(ctx, "post.state.changed", payload)
+		return nil
 	}
 	if anyFailed {
-		return s.store.SetPostState(ctx, post.ID, model.StatusFailed, nil, failCount, lastError, nil, now)
+		if err := s.store.SetPostState(ctx, post.ID, model.StatusFailed, nil, failCount, lastError, nil, now); err != nil {
+			return err
+		}
+		payload := map[string]any{
+			"post_id":    post.ID,
+			"status":     string(model.StatusFailed),
+			"fail_count": failCount,
+		}
+		if lastError != nil {
+			payload["last_error"] = *lastError
+		}
+		s.emitLifecycleEvent(ctx, "post.state.changed", payload)
+		return nil
 	}
 	return nil
 }
@@ -351,6 +437,11 @@ func (s *Service) attemptLegacyPublish(ctx context.Context, post model.Post) err
 		if updateErr := s.store.MarkSent(ctx, post.ID, now); updateErr != nil {
 			return fmt.Errorf("mark sent for post %d: %w", post.ID, updateErr)
 		}
+		s.emitLifecycleEvent(ctx, "post.state.changed", map[string]any{
+			"post_id": post.ID,
+			"status":  string(model.StatusSent),
+			"sent_at": now.UTC().Format(time.RFC3339),
+		})
 		s.logger.LogAttrs(
 			ctx,
 			slog.LevelInfo,
@@ -376,6 +467,16 @@ func (s *Service) attemptLegacyPublish(ctx context.Context, post model.Post) err
 	if updateErr := s.store.RecordFailure(ctx, post.ID, failCount, err.Error(), status, nextRetry, now); updateErr != nil {
 		return fmt.Errorf("record failure for post %d: %w", post.ID, updateErr)
 	}
+	payload := map[string]any{
+		"post_id":    post.ID,
+		"status":     string(status),
+		"fail_count": failCount,
+		"last_error": err.Error(),
+	}
+	if nextRetry != nil {
+		payload["next_retry_at"] = nextRetry.UTC().Format(time.RFC3339)
+	}
+	s.emitLifecycleEvent(ctx, "post.state.changed", payload)
 
 	level := slog.LevelWarn
 	if status == model.StatusFailed {
@@ -488,4 +589,14 @@ func copyStringPointer(value *string) *string {
 	}
 	copyValue := *value
 	return &copyValue
+}
+
+func (s *Service) emitLifecycleEvent(ctx context.Context, eventName string, payload map[string]any) {
+	if s.eventNotifier == nil {
+		return
+	}
+	if payload == nil {
+		payload = map[string]any{}
+	}
+	s.eventNotifier(ctx, strings.TrimSpace(eventName), payload)
 }

@@ -1,0 +1,60 @@
+{
+  "version": 1,
+  "errors": [
+    {
+      "code": "auth_unauthorized",
+      "status": 401,
+      "description": "Authentication failed or missing credentials."
+    },
+    {
+      "code": "request_invalid_json",
+      "status": 400,
+      "description": "JSON body is invalid or malformed."
+    },
+    {
+      "code": "request_invalid_post_id",
+      "status": 400,
+      "description": "Post id path/query parameter is invalid."
+    },
+    {
+      "code": "request_invalid_channel_id",
+      "status": 400,
+      "description": "Channel id path/query parameter is invalid."
+    },
+    {
+      "code": "request_invalid_status_filter",
+      "status": 400,
+      "description": "The status filter query value is invalid."
+    },
+    {
+      "code": "request_invalid_type_filter",
+      "status": 400,
+      "description": "The type filter query value is invalid."
+    },
+    {
+      "code": "post_not_found",
+      "status": 404,
+      "description": "Requested post does not exist."
+    },
+    {
+      "code": "channel_not_found",
+      "status": 404,
+      "description": "Requested channel does not exist."
+    },
+    {
+      "code": "conflict_*",
+      "status": 409,
+      "description": "Conflict while processing request (for example idempotency mismatch)."
+    },
+    {
+      "code": "bad_request_*",
+      "status": 400,
+      "description": "Validation or request-level problem."
+    },
+    {
+      "code": "internal_error_*",
+      "status": 500,
+      "description": "Unexpected server-side failure."
+    }
+  ]
+}

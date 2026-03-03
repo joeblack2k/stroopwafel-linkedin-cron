@@ -11,7 +11,7 @@ Lightweight Go monolith to draft, schedule, and publish social posts (LinkedIn +
 ## Postiz Parity Snapshot (API-first)
 
 - Scope is tracked in `docs/phase1-backlog.md` (API-first, then GUI).
-- Current verified score: **90/100** for defined parity scope.
+- Current verified score: **100/100** for defined parity scope.
 - The `>=80` gate is met for this scope.
 - Active implementation checklist: `todo.md`.
 - Agent-facing parity runbook: `docs/agents-usage.md`.
@@ -116,6 +116,20 @@ Main settings live in `/data/config.json`. Example:
 
 If you edit `config.json`, restart the container.
 
+## Webhook Configuration (Env)
+
+Webhook targets are configured with environment variables (no secrets in API responses):
+
+- `APP_WEBHOOK_URLS` (comma-separated `http(s)` URLs)
+- `APP_WEBHOOK_SECRET` (optional HMAC signing secret)
+
+Example:
+
+```bash
+APP_WEBHOOK_URLS=https://automation.example/hooks/social,https://agent.example/events
+APP_WEBHOOK_SECRET=replace-with-random-secret
+```
+
 ## Local Dev (without Docker)
 
 ```bash
@@ -166,6 +180,9 @@ API keys are stored hashed in SQLite.
 - Channel capabilities are exposed via API (`supports_media`, `media_types`, `requires_media`) and enforced on create/update/reschedule.
 - Media uploads are supported via UI/API upload endpoints and persisted under `/data/uploads` (served at `/media/*`).
 - Instagram channels are first-class with dedicated credentials and publisher implementation.
+- List endpoints now support pagination and filters (`limit`, `offset`, `q`, status/type filters).
+- Publish lifecycle webhooks are emitted for agents (`publish.attempt.created`, `post.state.changed`).
+- OpenAPI and error catalog are exposed at API metadata endpoints.
 
 ## UI Endpoints
 
@@ -224,6 +241,8 @@ API keys are stored hashed in SQLite.
 - `POST /api/v1/posts/bulk/send-now`
 - `POST /api/v1/posts/bulk/channels`
 - `GET /api/v1/settings/status`
+- `GET /api/v1/meta/openapi`
+- `GET /api/v1/meta/error-codes`
 - `GET /api/v1/analytics/overview`
 - `GET /api/v1/analytics/weekly-snapshot`
 - `POST /api/v1/settings/bot-handoff`
@@ -277,3 +296,5 @@ Imports LinkedIn integration and queued LinkedIn posts into this app.
 - `docs/agents-usage.md`
 - `docs/phase1-backlog.md`
 - `docs/build-brief-fleurtje.md`
+- `docs/openapi.yaml`
+- `docs/error-catalog.json`

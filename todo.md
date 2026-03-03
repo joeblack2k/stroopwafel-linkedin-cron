@@ -1,6 +1,6 @@
 # TODO (Postiz parity: API-first -> GUI)
 
-Current verified score: `90/100`.
+Current verified score: `100/100`.
 
 ## P0 — reach parity gate (`>=80`) first
 
@@ -12,11 +12,12 @@ Current verified score: `90/100`.
 
 ## P1 — API hardening after gate
 
-- [ ] **+6** Add pagination/filter/search for `GET /api/v1/posts` and `GET /api/v1/channels`.
-- [ ] **+6** Publish OpenAPI spec + stable machine-readable error code catalog.
-- [ ] **+8** Add publish lifecycle webhooks with delivery status tracking.
+- [x] **+6** Add pagination/filter/search for `GET /api/v1/posts` and `GET /api/v1/channels`.
+- [x] **+6** Publish OpenAPI spec + stable machine-readable error code catalog.
+- [x] **+8** Add publish lifecycle webhooks with delivery status tracking.
 
 ## P2 — GUI parity follow-through
 
 - [x] **+5** Add GUI analytics dashboard (weekly snapshot + channel delivery breakdown).
 - [ ] Add webhook health panel in Settings.
+- [ ] Add webhook retry dashboard + manual replay tools.

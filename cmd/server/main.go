@@ -22,6 +22,7 @@ import (
 	"linkedin-cron/internal/publisher"
 	"linkedin-cron/internal/scheduler"
 	"linkedin-cron/internal/views"
+	"linkedin-cron/internal/webhooks"
 )
 
 func main() {
@@ -56,6 +57,11 @@ func main() {
 	schedulerService := scheduler.NewService(store, pub, logger)
 	schedulerService.SetChannelPublisherResolver(func(channel model.Channel) publisher.Publisher {
 		return buildChannelPublisher(channel, logger)
+	})
+
+	webhookDispatcher := webhooks.NewDispatcher(cfg.WebhookURLs, cfg.WebhookSecret, "server", logger)
+	schedulerService.SetEventNotifier(func(ctx context.Context, eventName string, payload map[string]any) {
+		webhookDispatcher.Emit(ctx, eventName, payload)
 	})
 
 	renderer, err := views.NewRenderer(filepath.Join("web", "templates", "*.html"))
@@ -190,6 +196,8 @@ func registerProtectedRoutes(mux *http.ServeMux, uiAuth func(http.Handler) http.
 	mux.Handle("POST /api/v1/posts/bulk/send-now", apiMutating(app.APIBulkSendNowPosts))
 	mux.Handle("POST /api/v1/posts/bulk/channels", apiMutating(app.APIBulkSetPostChannels))
 	mux.Handle("GET /api/v1/settings/status", apiAuth(http.HandlerFunc(app.APISettingsStatus)))
+	mux.Handle("GET /api/v1/meta/openapi", apiAuth(http.HandlerFunc(app.APIOpenAPI)))
+	mux.Handle("GET /api/v1/meta/error-codes", apiAuth(http.HandlerFunc(app.APIErrorCatalog)))
 	mux.Handle("GET /api/v1/analytics/overview", apiAuth(http.HandlerFunc(app.APIAnalyticsOverview)))
 	mux.Handle("GET /api/v1/analytics/weekly-snapshot", apiAuth(http.HandlerFunc(app.APIWeeklySnapshot)))
 	mux.Handle("POST /api/v1/settings/bot-handoff", apiMutating(app.APICreateBotHandoff))

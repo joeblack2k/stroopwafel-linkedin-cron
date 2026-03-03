@@ -129,6 +129,11 @@ type channelResponse struct {
 	SecretPresence      channelSecretPresence `json:"secret_presence"`
 }
 
+type channelsListResponse struct {
+	Items      []channelResponse  `json:"items"`
+	Pagination paginationResponse `json:"pagination"`
+}
+
 func (a *App) Channels(w http.ResponseWriter, r *http.Request) {
 	defaultType := normalizeChannelTypeParam(r.URL.Query().Get("type"))
 	a.renderChannelsPage(
@@ -290,16 +295,47 @@ func (a *App) renderChannelsPage(w http.ResponseWriter, r *http.Request, status 
 }
 
 func (a *App) APIListChannels(w http.ResponseWriter, r *http.Request) {
-	channels, err := a.Store.ListChannels(r.Context())
+	typeFilter := model.ChannelType(strings.TrimSpace(r.URL.Query().Get("type")))
+	if rawType := strings.TrimSpace(r.URL.Query().Get("type")); rawType != "" && !typeFilter.Valid() {
+		writeAPIError(w, http.StatusBadRequest, "invalid type filter")
+		return
+	}
+
+	statusFilter := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("status")))
+	if statusFilter != "" && statusFilter != model.ChannelStatusActive && statusFilter != model.ChannelStatusError && statusFilter != model.ChannelStatusDisabled {
+		writeAPIError(w, http.StatusBadRequest, "invalid status filter")
+		return
+	}
+
+	limit := parseLimit(r.URL.Query().Get("limit"), 50)
+	offset := parseOffset(r.URL.Query().Get("offset"), 0)
+	filter := db.ChannelListFilter{
+		Type:    typeFilter,
+		Status:  statusFilter,
+		SearchQ: strings.TrimSpace(r.URL.Query().Get("q")),
+	}
+
+	total, err := a.Store.CountChannelsFiltered(r.Context(), filter)
+	if err != nil {
+		writeAPIError(w, http.StatusInternalServerError, "failed to count channels")
+		return
+	}
+
+	channels, err := a.Store.ListChannelsFiltered(r.Context(), filter, limit, offset)
 	if err != nil {
 		writeAPIError(w, http.StatusInternalServerError, "failed to list channels")
 		return
 	}
+
 	response := make([]channelResponse, 0, len(channels))
 	for _, channel := range channels {
 		response = append(response, mapChannelResponse(channel))
 	}
-	writeJSON(w, http.StatusOK, response)
+
+	writeJSON(w, http.StatusOK, channelsListResponse{
+		Items:      response,
+		Pagination: buildPagination(limit, offset, total),
+	})
 }
 
 func (a *App) APICreateChannel(w http.ResponseWriter, r *http.Request) {

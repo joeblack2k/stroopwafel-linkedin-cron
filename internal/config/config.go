@@ -30,6 +30,8 @@ type Config struct {
 	FacebookPageToken string
 	FacebookPageID    string
 	FacebookAPIBase   string
+	WebhookURLs       []string
+	WebhookSecret     string
 }
 
 type PersistedConfig struct {
@@ -97,6 +99,8 @@ func Load() (Config, error) {
 		FacebookPageToken: strings.TrimSpace(persisted.FacebookPageToken),
 		FacebookPageID:    strings.TrimSpace(persisted.FacebookPageID),
 		FacebookAPIBase:   strings.TrimRight(defaultIfEmpty(strings.TrimSpace(persisted.FacebookAPIBase), "https://graph.facebook.com/v22.0"), "/"),
+		WebhookURLs:       parseWebhookURLs(os.Getenv("APP_WEBHOOK_URLS")),
+		WebhookSecret:     strings.TrimSpace(os.Getenv("APP_WEBHOOK_SECRET")),
 	}
 
 	return cfg, nil
@@ -335,4 +339,36 @@ func parseStaticAPIKeys(raw string) map[string]string {
 		return nil
 	}
 	return parsed
+}
+
+func parseWebhookURLs(raw string) []string {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return nil
+	}
+
+	replacer := strings.NewReplacer("\n", ",", ";", ",")
+	parts := strings.Split(replacer.Replace(trimmed), ",")
+	urls := make([]string, 0, len(parts))
+	seen := make(map[string]struct{}, len(parts))
+
+	for _, part := range parts {
+		item := strings.TrimSpace(part)
+		if item == "" {
+			continue
+		}
+		if !strings.HasPrefix(item, "http://") && !strings.HasPrefix(item, "https://") {
+			continue
+		}
+		if _, exists := seen[item]; exists {
+			continue
+		}
+		seen[item] = struct{}{}
+		urls = append(urls, item)
+	}
+
+	if len(urls) == 0 {
+		return nil
+	}
+	return urls
 }
