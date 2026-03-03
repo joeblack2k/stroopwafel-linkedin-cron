@@ -4,6 +4,7 @@ A lightweight Go monolith to draft, schedule, and publish social posts (LinkedIn
 
 - server-rendered HTML UI (`net/http` + `html/template` + HTMX)
 - minimal authenticated JSON API for agent use
+- GUI-managed API keys for agent authentication
 - SQLite storage with handwritten SQL
 - one-shot scheduler command meant for `systemd.timer`
 - pluggable publisher (default: dry-run)
@@ -17,6 +18,11 @@ A lightweight Go monolith to draft, schedule, and publish social posts (LinkedIn
 - `internal/publisher`: publisher interface + dry-run implementation
 - `internal/linkedin`: LinkedIn HTTP publisher (config-gated)
 - `internal/facebook`: Facebook Page Graph API publisher (config-gated)
+
+## Agent Docs
+
+- Deployment: `docs/agents-deployment.md`
+- API usage/security: `docs/agents-usage.md`
 
 There is no internal background job loop in the server and no Node build pipeline.
 
@@ -52,6 +58,9 @@ SQLite location default: `./data/linkedin-cron.db`
 - `make fmt` – runs `go fmt ./...`
 - `make lint` – runs `golangci-lint` if installed
 - `make clean` – removes `bin/`
+- `make docker-build` – builds local Docker image
+- `make docker-up` – starts docker-compose stack
+- `make docker-down` – stops docker-compose stack
 
 ## Configuration
 
@@ -74,6 +83,21 @@ Environment variables:
 - `FACEBOOK_API_BASE_URL` (default `https://graph.facebook.com/v22.0`)
 
 If `PUBLISHER_MODE=linkedin` or `PUBLISHER_MODE=facebook-page` but required credentials are missing, the app falls back to dry-run mode.
+
+## API Authentication for Agents
+
+API routes support:
+
+- Basic Auth, or
+- API key (`X-API-Key` or `Authorization: Bearer ...`)
+
+API keys are created/revoked in `/settings`.
+
+Security behavior:
+
+- API keys are generated once and shown once.
+- Only a hash is stored in SQLite (`api_keys.key_hash`).
+- Revoked keys are immediately blocked.
 
 ## UI Endpoints
 
@@ -193,3 +217,30 @@ Even though naming often highlights `linkedin-cron.service` and `linkedin-cron.t
 - `linkedin-cron.timer` (triggers scheduler service every minute)
 
 This keeps operational behavior explicit and avoids hidden in-process worker loops.
+
+## Docker + GHCR Deployment
+
+This repo includes:
+
+- `Dockerfile`
+- `docker-compose.yml`
+- GitHub Actions GHCR publisher: `.github/workflows/ghcr.yml`
+
+Run locally with Docker:
+
+```bash
+cp .env.example .env
+docker compose up -d
+```
+
+Or via Makefile:
+
+```bash
+make docker-up
+```
+
+Pull from GHCR:
+
+```bash
+docker pull ghcr.io/joeblack2k/stroopwafel-linkedin-cron:latest
+```

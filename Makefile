@@ -1,6 +1,6 @@
 SHELL := /bin/bash
 
-.PHONY: build run run-scheduler test clean fmt lint
+.PHONY: build run run-scheduler test clean fmt lint docker-build docker-up docker-down
 
 build:
 	@mkdir -p bin
@@ -34,3 +34,12 @@ lint:
 
 clean:
 	rm -rf bin
+
+docker-build:
+	docker build -t ghcr.io/joeblack2k/stroopwafel-linkedin-cron:local .
+
+docker-up:
+	docker compose up -d
+
+docker-down:
+	docker compose down

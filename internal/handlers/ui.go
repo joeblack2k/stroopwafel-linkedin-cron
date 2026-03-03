@@ -53,8 +53,12 @@ type PostFormInput struct {
 }
 
 type SettingsPageData struct {
-	Title    string
-	Settings SettingsStatus
+	Title         string
+	Settings      SettingsStatus
+	APIKeys       []model.APIKey
+	Message       string
+	Error         string
+	CreatedAPIKey string
 }
 
 func (a *App) Healthz(w http.ResponseWriter, r *http.Request) {
@@ -347,7 +351,96 @@ func (a *App) SendNowPost(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *App) Settings(w http.ResponseWriter, r *http.Request) {
-	data := SettingsPageData{Title: "Settings", Settings: a.settingsStatus()}
+	a.renderSettingsPage(
+		w,
+		r,
+		http.StatusOK,
+		strings.TrimSpace(r.URL.Query().Get("msg")),
+		strings.TrimSpace(r.URL.Query().Get("err")),
+		"",
+	)
+}
+
+func (a *App) CreateAPIKey(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		a.renderSettingsPage(w, r, http.StatusBadRequest, "", "invalid form body", "")
+		return
+	}
+
+	name := strings.TrimSpace(r.FormValue("name"))
+	if name == "" {
+		a.renderSettingsPage(w, r, http.StatusBadRequest, "", "name is required", "")
+		return
+	}
+
+	created, rawToken, err := a.Store.CreateAPIKey(r.Context(), name)
+	if err != nil {
+		a.renderSettingsPage(w, r, http.StatusInternalServerError, "", "failed to create api key", "")
+		return
+	}
+
+	a.Logger.LogAttrs(
+		r.Context(),
+		slog.LevelInfo,
+		"api key created",
+		slog.String("component", "settings"),
+		slog.Int64("api_key_id", created.ID),
+		slog.String("api_key_name", created.Name),
+	)
+
+	a.renderSettingsPage(
+		w,
+		r,
+		http.StatusOK,
+		fmt.Sprintf("API key %q created", created.Name),
+		"",
+		rawToken,
+	)
+}
+
+func (a *App) RevokeAPIKey(w http.ResponseWriter, r *http.Request) {
+	id, err := parseID(r.PathValue("id"))
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+
+	if err := a.Store.RevokeAPIKey(r.Context(), id); err != nil {
+		if errors.Is(err, db.ErrNotFound) {
+			http.NotFound(w, r)
+			return
+		}
+		a.renderSettingsPage(w, r, http.StatusInternalServerError, "", "failed to revoke api key", "")
+		return
+	}
+
+	a.Logger.LogAttrs(
+		r.Context(),
+		slog.LevelInfo,
+		"api key revoked",
+		slog.String("component", "settings"),
+		slog.Int64("api_key_id", id),
+	)
+
+	http.Redirect(w, r, "/settings?msg="+url.QueryEscape("API key revoked"), http.StatusSeeOther)
+}
+
+func (a *App) renderSettingsPage(w http.ResponseWriter, r *http.Request, status int, message, renderErr, createdAPIKey string) {
+	apiKeys, err := a.Store.ListAPIKeys(r.Context())
+	if err != nil {
+		http.Error(w, "failed to load settings", http.StatusInternalServerError)
+		return
+	}
+
+	data := SettingsPageData{
+		Title:         "Settings",
+		Settings:      a.settingsStatus(),
+		APIKeys:       sanitizeAPIKeys(apiKeys),
+		Message:       message,
+		Error:         renderErr,
+		CreatedAPIKey: createdAPIKey,
+	}
+	w.WriteHeader(status)
 	if err := a.Renderer.Render(w, "settings.html", data); err != nil {
 		http.Error(w, "failed to render settings", http.StatusInternalServerError)
 	}

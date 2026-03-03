@@ -169,6 +169,14 @@ table {
   background: #fff;
 }
 
+.actions {
+  margin-top: 1rem;
+}
+
+code {
+  word-break: break-all;
+}
+
 th,
 td {
   border: 1px solid #e2e8f0;

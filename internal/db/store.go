@@ -2,7 +2,10 @@ package db
 
 import (
 	"context"
+	"crypto/rand"
+	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"os"
@@ -29,6 +32,8 @@ type PostInput struct {
 	Status      model.PostStatus
 	MediaURL    *string
 }
+
+const apiKeyTokenPrefix = "lcak_"
 
 func EnsureDBDir(path string) error {
 	dir := filepath.Dir(path)
@@ -290,6 +295,141 @@ func (s *Store) RecordFailure(ctx context.Context, id int64, failCount int, last
 	return nil
 }
 
+func (s *Store) CreateAPIKey(ctx context.Context, name string) (model.APIKey, string, error) {
+	trimmedName := strings.TrimSpace(name)
+	if trimmedName == "" {
+		return model.APIKey{}, "", fmt.Errorf("api key name is required")
+	}
+
+	token, err := generateAPIKeyToken()
+	if err != nil {
+		return model.APIKey{}, "", fmt.Errorf("generate api key token: %w", err)
+	}
+
+	now := time.Now().UTC()
+	hash := hashAPIKeyToken(token)
+	prefix := visiblePrefix(token)
+
+	result, err := s.db.ExecContext(
+		ctx,
+		`INSERT INTO api_keys(name, key_prefix, key_hash, created_at) VALUES(?, ?, ?, ?)`,
+		trimmedName,
+		prefix,
+		hash,
+		formatDBTime(now),
+	)
+	if err != nil {
+		return model.APIKey{}, "", fmt.Errorf("insert api key: %w", err)
+	}
+	id, err := result.LastInsertId()
+	if err != nil {
+		return model.APIKey{}, "", fmt.Errorf("read inserted api key id: %w", err)
+	}
+
+	created, err := s.GetAPIKey(ctx, id)
+	if err != nil {
+		return model.APIKey{}, "", err
+	}
+	return created, token, nil
+}
+
+func (s *Store) GetAPIKey(ctx context.Context, id int64) (model.APIKey, error) {
+	row := s.db.QueryRowContext(
+		ctx,
+		`SELECT id, name, key_prefix, created_at, last_used_at, revoked_at
+		 FROM api_keys
+		 WHERE id = ?`,
+		id,
+	)
+	key, err := scanAPIKey(row)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return model.APIKey{}, ErrNotFound
+		}
+		return model.APIKey{}, fmt.Errorf("get api key %d: %w", id, err)
+	}
+	return key, nil
+}
+
+func (s *Store) ListAPIKeys(ctx context.Context) ([]model.APIKey, error) {
+	rows, err := s.db.QueryContext(
+		ctx,
+		`SELECT id, name, key_prefix, created_at, last_used_at, revoked_at
+		 FROM api_keys
+		 ORDER BY created_at DESC, id DESC`,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("list api keys: %w", err)
+	}
+	defer rows.Close()
+
+	keys := make([]model.APIKey, 0)
+	for rows.Next() {
+		item, err := scanAPIKey(rows)
+		if err != nil {
+			return nil, fmt.Errorf("scan api key row: %w", err)
+		}
+		keys = append(keys, item)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate api keys rows: %w", err)
+	}
+	return keys, nil
+}
+
+func (s *Store) RevokeAPIKey(ctx context.Context, id int64) error {
+	result, err := s.db.ExecContext(
+		ctx,
+		`UPDATE api_keys
+		 SET revoked_at = COALESCE(revoked_at, ?)
+		 WHERE id = ?`,
+		formatDBTime(time.Now().UTC()),
+		id,
+	)
+	if err != nil {
+		return fmt.Errorf("revoke api key %d: %w", id, err)
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("read rows affected for revoke api key %d: %w", id, err)
+	}
+	if affected == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+func (s *Store) AuthenticateAPIKey(ctx context.Context, token string) (model.APIKey, error) {
+	trimmed := strings.TrimSpace(token)
+	if trimmed == "" {
+		return model.APIKey{}, ErrNotFound
+	}
+
+	hash := hashAPIKeyToken(trimmed)
+	row := s.db.QueryRowContext(
+		ctx,
+		`SELECT id, name, key_prefix, created_at, last_used_at, revoked_at
+		 FROM api_keys
+		 WHERE key_hash = ?
+		   AND revoked_at IS NULL`,
+		hash,
+	)
+	key, err := scanAPIKey(row)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return model.APIKey{}, ErrNotFound
+		}
+		return model.APIKey{}, fmt.Errorf("find api key by hash: %w", err)
+	}
+
+	now := time.Now().UTC()
+	if _, err := s.db.ExecContext(ctx, `UPDATE api_keys SET last_used_at = ? WHERE id = ?`, formatDBTime(now), key.ID); err != nil {
+		return model.APIKey{}, fmt.Errorf("update api key last_used_at: %w", err)
+	}
+	key.LastUsedAt = &now
+	return key, nil
+}
+
 type scanner interface {
 	Scan(dest ...any) error
 }
@@ -362,6 +502,47 @@ func scanPost(s scanner) (model.Post, error) {
 	return post, nil
 }
 
+func scanAPIKey(s scanner) (model.APIKey, error) {
+	var (
+		id         int64
+		name       string
+		keyPrefix  string
+		createdAt  string
+		lastUsedAt sql.NullString
+		revokedAt  sql.NullString
+	)
+	if err := s.Scan(&id, &name, &keyPrefix, &createdAt, &lastUsedAt, &revokedAt); err != nil {
+		return model.APIKey{}, err
+	}
+
+	created, err := parseDBTime(createdAt)
+	if err != nil {
+		return model.APIKey{}, fmt.Errorf("parse api key created_at: %w", err)
+	}
+
+	item := model.APIKey{
+		ID:        id,
+		Name:      name,
+		KeyPrefix: keyPrefix,
+		CreatedAt: created,
+	}
+	if lastUsedAt.Valid {
+		parsed, err := parseDBTime(lastUsedAt.String)
+		if err != nil {
+			return model.APIKey{}, fmt.Errorf("parse api key last_used_at: %w", err)
+		}
+		item.LastUsedAt = &parsed
+	}
+	if revokedAt.Valid {
+		parsed, err := parseDBTime(revokedAt.String)
+		if err != nil {
+			return model.APIKey{}, fmt.Errorf("parse api key revoked_at: %w", err)
+		}
+		item.RevokedAt = &parsed
+	}
+	return item, nil
+}
+
 func formatDBTime(value time.Time) string {
 	return value.UTC().Format(dbTimeLayout)
 }
@@ -390,4 +571,25 @@ func nullableTime(value *time.Time) any {
 		return nil
 	}
 	return formatDBTime(*value)
+}
+
+func generateAPIKeyToken() (string, error) {
+	randomBytes := make([]byte, 24)
+	if _, err := rand.Read(randomBytes); err != nil {
+		return "", err
+	}
+	return apiKeyTokenPrefix + hex.EncodeToString(randomBytes), nil
+}
+
+func hashAPIKeyToken(token string) string {
+	sum := sha256.Sum256([]byte(strings.TrimSpace(token)))
+	return hex.EncodeToString(sum[:])
+}
+
+func visiblePrefix(token string) string {
+	trimmed := strings.TrimSpace(token)
+	if len(trimmed) <= 10 {
+		return trimmed
+	}
+	return trimmed[:10]
 }

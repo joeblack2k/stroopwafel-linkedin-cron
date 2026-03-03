@@ -1,0 +1,33 @@
+services:
+  linkedin-cron-server:
+    image: ghcr.io/joeblack2k/stroopwafel-linkedin-cron:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: linkedin-cron-server
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      APP_DB_PATH: /data/linkedin-cron.db
+    ports:
+      - "8080:8080"
+    volumes:
+      - linkedin_cron_data:/data
+
+  linkedin-cron-scheduler:
+    image: ghcr.io/joeblack2k/stroopwafel-linkedin-cron:latest
+    container_name: linkedin-cron-scheduler
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      APP_DB_PATH: /data/linkedin-cron.db
+    command: ["/bin/sh", "-c", "while true; do /usr/local/bin/linkedin-cron-scheduler; sleep 60; done"]
+    depends_on:
+      - linkedin-cron-server
+    volumes:
+      - linkedin_cron_data:/data
+
+volumes:
+  linkedin_cron_data:

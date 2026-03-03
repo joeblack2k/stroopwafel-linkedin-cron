@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"crypto/subtle"
 	"encoding/json"
 	"errors"
@@ -13,6 +14,7 @@ import (
 
 	"linkedin-cron/internal/config"
 	"linkedin-cron/internal/db"
+	"linkedin-cron/internal/model"
 	"linkedin-cron/internal/scheduler"
 	"linkedin-cron/internal/views"
 )
@@ -29,6 +31,14 @@ type App struct {
 	LinkedInConfigured bool
 	FacebookConfigured bool
 }
+
+type contextKey string
+
+const (
+	contextKeyAuthMethod contextKey = "auth_method"
+	contextKeyAPIKeyID   contextKey = "api_key_id"
+	contextKeyAPIKeyName contextKey = "api_key_name"
+)
 
 type SettingsStatus struct {
 	BasicAuthConfigured bool   `json:"basic_auth_configured"`
@@ -50,16 +60,7 @@ type SettingsStatus struct {
 func BasicAuthMiddleware(username, password string, logger *slog.Logger) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			user, pass, ok := r.BasicAuth()
-			if !ok {
-				w.Header().Set("WWW-Authenticate", `Basic realm="linkedin-cron"`)
-				http.Error(w, "unauthorized", http.StatusUnauthorized)
-				return
-			}
-
-			userOK := subtle.ConstantTimeCompare([]byte(user), []byte(username)) == 1
-			passOK := subtle.ConstantTimeCompare([]byte(pass), []byte(password)) == 1
-			if !(userOK && passOK) {
+			if !isValidBasicAuth(r, username, password) {
 				logger.LogAttrs(
 					r.Context(),
 					slog.LevelWarn,
@@ -72,9 +73,109 @@ func BasicAuthMiddleware(username, password string, logger *slog.Logger) func(ht
 				return
 			}
 
-			next.ServeHTTP(w, r)
+			ctx := context.WithValue(r.Context(), contextKeyAuthMethod, "basic")
+			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}
+}
+
+func APIAuthMiddleware(username, password string, store *db.Store, logger *slog.Logger) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if isValidBasicAuth(r, username, password) {
+				ctx := context.WithValue(r.Context(), contextKeyAuthMethod, "basic")
+				next.ServeHTTP(w, r.WithContext(ctx))
+				return
+			}
+
+			token := extractAPIKeyToken(r)
+			if token != "" {
+				apiKey, err := store.AuthenticateAPIKey(r.Context(), token)
+				if err == nil {
+					ctx := context.WithValue(r.Context(), contextKeyAuthMethod, "api-key")
+					ctx = context.WithValue(ctx, contextKeyAPIKeyID, apiKey.ID)
+					ctx = context.WithValue(ctx, contextKeyAPIKeyName, apiKey.Name)
+					next.ServeHTTP(w, r.WithContext(ctx))
+					return
+				}
+				logger.LogAttrs(
+					r.Context(),
+					slog.LevelWarn,
+					"api key authentication failed",
+					slog.String("component", "http"),
+					slog.String("path", r.URL.Path),
+					slog.String("error", err.Error()),
+				)
+			}
+
+			w.Header().Set("WWW-Authenticate", `Basic realm="linkedin-cron"`)
+			writeAPIError(w, http.StatusUnauthorized, "unauthorized")
+		})
+	}
+}
+
+func isValidBasicAuth(r *http.Request, username, password string) bool {
+	user, pass, ok := r.BasicAuth()
+	if !ok {
+		return false
+	}
+	userOK := subtle.ConstantTimeCompare([]byte(user), []byte(username)) == 1
+	passOK := subtle.ConstantTimeCompare([]byte(pass), []byte(password)) == 1
+	return userOK && passOK
+}
+
+func extractAPIKeyToken(r *http.Request) string {
+	fromHeader := strings.TrimSpace(r.Header.Get("X-API-Key"))
+	if fromHeader != "" {
+		return fromHeader
+	}
+	authorization := strings.TrimSpace(r.Header.Get("Authorization"))
+	if strings.HasPrefix(strings.ToLower(authorization), "bearer ") {
+		return strings.TrimSpace(authorization[len("bearer "):])
+	}
+	return ""
+}
+
+func authMethodFromContext(ctx context.Context) string {
+	value, _ := ctx.Value(contextKeyAuthMethod).(string)
+	if value == "" {
+		return "unknown"
+	}
+	return value
+}
+
+func apiKeyNameFromContext(ctx context.Context) string {
+	value, _ := ctx.Value(contextKeyAPIKeyName).(string)
+	return value
+}
+
+func apiKeyIDFromContext(ctx context.Context) int64 {
+	value, _ := ctx.Value(contextKeyAPIKeyID).(int64)
+	return value
+}
+
+func AuthMethodForLog(ctx context.Context) string {
+	return authMethodFromContext(ctx)
+}
+
+func APIKeyIDForLog(ctx context.Context) int64 {
+	return apiKeyIDFromContext(ctx)
+}
+
+func APIKeyNameForLog(ctx context.Context) string {
+	return apiKeyNameFromContext(ctx)
+}
+
+func sanitizeAPIKeys(items []model.APIKey) []model.APIKey {
+	keys := make([]model.APIKey, 0, len(items))
+	for _, item := range items {
+		copyItem := item
+		if strings.TrimSpace(copyItem.KeyPrefix) != "" {
+			copyItem.KeyPrefix = copyItem.KeyPrefix + "..."
+		}
+		keys = append(keys, copyItem)
+	}
+	return keys
 }
 
 func (a *App) settingsStatus() SettingsStatus {

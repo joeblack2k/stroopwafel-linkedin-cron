@@ -75,8 +75,9 @@ func main() {
 	mux.HandleFunc("GET /healthz", app.Healthz)
 	mux.HandleFunc("GET /api/v1/healthz", app.APIHealthz)
 
-	auth := handlers.BasicAuthMiddleware(cfg.BasicAuthUser, cfg.BasicAuthPass, logger)
-	registerProtectedRoutes(mux, auth, app)
+	uiAuth := handlers.BasicAuthMiddleware(cfg.BasicAuthUser, cfg.BasicAuthPass, logger)
+	apiAuth := handlers.APIAuthMiddleware(cfg.BasicAuthUser, cfg.BasicAuthPass, store, logger)
+	registerProtectedRoutes(mux, uiAuth, apiAuth, app)
 
 	handler := requestLogger(logger, mux)
 	server := &http.Server{
@@ -114,31 +115,33 @@ func main() {
 	}
 }
 
-func registerProtectedRoutes(mux *http.ServeMux, auth func(http.Handler) http.Handler, app *handlers.App) {
-	mux.Handle("GET /", auth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+func registerProtectedRoutes(mux *http.ServeMux, uiAuth func(http.Handler) http.Handler, apiAuth func(http.Handler) http.Handler, app *handlers.App) {
+	mux.Handle("GET /", uiAuth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/calendar", http.StatusSeeOther)
 	})))
 
 	staticDir := filepath.Join("web", "static")
 	staticHandler := http.StripPrefix("/static/", http.FileServer(http.Dir(staticDir)))
-	mux.Handle("GET /static/", auth(staticHandler))
+	mux.Handle("GET /static/", uiAuth(staticHandler))
 
-	mux.Handle("GET /calendar", auth(http.HandlerFunc(app.Calendar)))
-	mux.Handle("GET /posts/new", auth(http.HandlerFunc(app.NewPost)))
-	mux.Handle("POST /posts", auth(http.HandlerFunc(app.CreatePost)))
-	mux.Handle("GET /posts/{id}/edit", auth(http.HandlerFunc(app.EditPost)))
-	mux.Handle("POST /posts/{id}", auth(http.HandlerFunc(app.UpdatePost)))
-	mux.Handle("POST /posts/{id}/delete", auth(http.HandlerFunc(app.DeletePost)))
-	mux.Handle("POST /posts/{id}/send-now", auth(http.HandlerFunc(app.SendNowPost)))
-	mux.Handle("GET /settings", auth(http.HandlerFunc(app.Settings)))
+	mux.Handle("GET /calendar", uiAuth(http.HandlerFunc(app.Calendar)))
+	mux.Handle("GET /posts/new", uiAuth(http.HandlerFunc(app.NewPost)))
+	mux.Handle("POST /posts", uiAuth(http.HandlerFunc(app.CreatePost)))
+	mux.Handle("GET /posts/{id}/edit", uiAuth(http.HandlerFunc(app.EditPost)))
+	mux.Handle("POST /posts/{id}", uiAuth(http.HandlerFunc(app.UpdatePost)))
+	mux.Handle("POST /posts/{id}/delete", uiAuth(http.HandlerFunc(app.DeletePost)))
+	mux.Handle("POST /posts/{id}/send-now", uiAuth(http.HandlerFunc(app.SendNowPost)))
+	mux.Handle("GET /settings", uiAuth(http.HandlerFunc(app.Settings)))
+	mux.Handle("POST /settings/api-keys", uiAuth(http.HandlerFunc(app.CreateAPIKey)))
+	mux.Handle("POST /settings/api-keys/{id}/revoke", uiAuth(http.HandlerFunc(app.RevokeAPIKey)))
 
-	mux.Handle("GET /api/v1/posts", auth(http.HandlerFunc(app.APIListPosts)))
-	mux.Handle("GET /api/v1/posts/{id}", auth(http.HandlerFunc(app.APIGetPost)))
-	mux.Handle("POST /api/v1/posts", auth(http.HandlerFunc(app.APICreatePost)))
-	mux.Handle("PUT /api/v1/posts/{id}", auth(http.HandlerFunc(app.APIUpdatePost)))
-	mux.Handle("DELETE /api/v1/posts/{id}", auth(http.HandlerFunc(app.APIDeletePost)))
-	mux.Handle("POST /api/v1/posts/{id}/send-now", auth(http.HandlerFunc(app.APISendNowPost)))
-	mux.Handle("GET /api/v1/settings/status", auth(http.HandlerFunc(app.APISettingsStatus)))
+	mux.Handle("GET /api/v1/posts", apiAuth(http.HandlerFunc(app.APIListPosts)))
+	mux.Handle("GET /api/v1/posts/{id}", apiAuth(http.HandlerFunc(app.APIGetPost)))
+	mux.Handle("POST /api/v1/posts", apiAuth(http.HandlerFunc(app.APICreatePost)))
+	mux.Handle("PUT /api/v1/posts/{id}", apiAuth(http.HandlerFunc(app.APIUpdatePost)))
+	mux.Handle("DELETE /api/v1/posts/{id}", apiAuth(http.HandlerFunc(app.APIDeletePost)))
+	mux.Handle("POST /api/v1/posts/{id}/send-now", apiAuth(http.HandlerFunc(app.APISendNowPost)))
+	mux.Handle("GET /api/v1/settings/status", apiAuth(http.HandlerFunc(app.APISettingsStatus)))
 }
 
 func buildPublisher(cfg config.Config, logger *slog.Logger) (publisher.Publisher, string) {
@@ -176,6 +179,9 @@ func requestLogger(logger *slog.Logger, next http.Handler) http.Handler {
 			slog.String("path", r.URL.Path),
 			slog.Int("status", recorder.status),
 			slog.Int64("duration_ms", time.Since(start).Milliseconds()),
+			slog.String("auth_method", handlers.AuthMethodForLog(r.Context())),
+			slog.Int64("api_key_id", handlers.APIKeyIDForLog(r.Context())),
+			slog.String("api_key_name", handlers.APIKeyNameForLog(r.Context())),
 			slog.String("remote_addr", strings.Split(r.RemoteAddr, ":")[0]),
 		)
 	})
