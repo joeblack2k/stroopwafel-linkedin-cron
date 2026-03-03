@@ -22,6 +22,24 @@ The compose setup runs:
 
 Both containers share the same SQLite volume (`linkedin_cron_data`).
 
+### Pull-only deploy/update (recommended for hosts)
+
+Use `scripts/deploy-ghcr.sh` with a PAT that has `read:packages`:
+
+```bash
+export GHCR_USERNAME=joeblack2k
+export GHCR_TOKEN=ghp_xxx
+export IMAGE_TAG=latest
+./scripts/deploy-ghcr.sh
+```
+
+Notes:
+
+- script uses `docker-compose.yml` + `docker-compose.ghcr.yml`
+- forces pull (`pull_policy: always`) and disables local compose build
+- keeps scheduler as a separate container process
+- `GHCR_TOKEN` must include `read:packages` (without it, GHCR pull returns 403)
+
 ## 2) Required environment values
 
 At minimum set in `.env`:
@@ -45,10 +63,21 @@ curl -u "$APP_BASIC_AUTH_USER:$APP_BASIC_AUTH_PASS" http://localhost:8080/api/v1
 ## 4) Updating
 
 ```bash
-docker compose pull
-docker compose up -d
+./scripts/deploy-ghcr.sh
 ```
 
 ## 5) Production note
 
 Pin to explicit versions (`vX.Y.Z`) in production instead of `latest`.
+
+## 6) Import from existing Postiz
+
+Import LinkedIn integration and queued calendar posts from Postiz:
+
+```bash
+make import-postiz
+```
+
+The import script reads Postiz data from `/opt/stacks/management/postiz`, creates/updates an imported LinkedIn channel, and migrates queued posts into scheduled posts in this app.
+
+If Postiz DB was initially stopped, the script will stop it again after import (set `KEEP_POSTIZ_PG_RUNNING=1` to keep it running).

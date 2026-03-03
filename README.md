@@ -294,3 +294,41 @@ Pull from GHCR:
 ```bash
 docker pull ghcr.io/joeblack2k/stroopwafel-linkedin-cron:latest
 ```
+
+### Pull-only host updates (no local Docker build)
+
+Use a GitHub Personal Access Token with at least `read:packages` scope.
+
+```bash
+export GHCR_USERNAME=joeblack2k
+export GHCR_TOKEN=ghp_xxx
+export IMAGE_TAG=latest
+./scripts/deploy-ghcr.sh
+```
+
+This uses `docker-compose.ghcr.yml` to force image pulls and disable compose local build.
+
+## Import from Postiz
+
+Import LinkedIn login + queued calendar posts from Postiz into this app:
+
+```bash
+make import-postiz
+```
+
+What it does:
+
+- starts/uses Postiz PostgreSQL container (`postiz-postgres`)
+- imports/updates one LinkedIn channel (`Imported Postiz LinkedIn`)
+- copies queued LinkedIn posts as `scheduled` posts
+- attaches imported posts to the imported LinkedIn channel
+
+Optional overrides:
+
+- `APP_URL` (default `http://localhost:8080`)
+- `CHANNEL_DISPLAY_NAME`
+- `LINKEDIN_AUTHOR_URN_OVERRIDE`
+- `POSTIZ_COMPOSE_FILE`
+- `KEEP_POSTIZ_PG_RUNNING=1` (keep source Postiz DB container running after import)
+
+The import script needs `sudo docker` access to inspect Postiz data.

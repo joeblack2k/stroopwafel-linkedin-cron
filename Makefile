@@ -1,6 +1,6 @@
 SHELL := /bin/bash
 
-.PHONY: build run run-scheduler test clean fmt lint docker-build docker-up docker-down
+.PHONY: build run run-scheduler test clean fmt lint docker-build docker-up docker-down docker-up-ghcr import-postiz
 
 build:
 	@mkdir -p bin
@@ -43,3 +43,9 @@ docker-up:
 
 docker-down:
 	docker compose down
+
+docker-up-ghcr:
+	./scripts/deploy-ghcr.sh
+
+import-postiz:
+	./scripts/import-postiz-linkedin.sh
