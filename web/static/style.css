@@ -163,6 +163,27 @@ textarea {
   font: inherit;
 }
 
+fieldset {
+  border: 1px solid #cbd5e1;
+  border-radius: 0.3rem;
+  padding: 0.6rem;
+}
+
+legend {
+  padding: 0 0.3rem;
+  font-weight: 600;
+}
+
+.checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.checkbox-row input[type="checkbox"] {
+  width: auto;
+}
+
 table {
   width: 100%;
   border-collapse: collapse;

@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"strings"
@@ -15,6 +16,7 @@ type postPayload struct {
 	Text        string  `json:"text"`
 	Status      string  `json:"status"`
 	MediaURL    *string `json:"media_url"`
+	ChannelIDs  []int64 `json:"channel_ids,omitempty"`
 }
 
 type postResponse struct {
@@ -29,6 +31,7 @@ type postResponse struct {
 	LastError   *string `json:"last_error,omitempty"`
 	MediaURL    *string `json:"media_url,omitempty"`
 	NextRetryAt *string `json:"next_retry_at,omitempty"`
+	ChannelIDs  []int64 `json:"channel_ids,omitempty"`
 }
 
 func (a *App) APIHealthz(w http.ResponseWriter, r *http.Request) {
@@ -48,7 +51,12 @@ func (a *App) APIListPosts(w http.ResponseWriter, r *http.Request) {
 
 	response := make([]postResponse, 0, len(posts))
 	for _, post := range posts {
-		response = append(response, mapPostResponse(post))
+		mapped, mapErr := a.mapPostResponse(r.Context(), post)
+		if mapErr != nil {
+			writeAPIError(w, http.StatusInternalServerError, "failed to load post channels")
+			return
+		}
+		response = append(response, mapped)
 	}
 	writeJSON(w, http.StatusOK, response)
 }
@@ -70,7 +78,12 @@ func (a *App) APIGetPost(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusOK, mapPostResponse(post))
+	mapped, mapErr := a.mapPostResponse(r.Context(), post)
+	if mapErr != nil {
+		writeAPIError(w, http.StatusInternalServerError, "failed to load post channels")
+		return
+	}
+	writeJSON(w, http.StatusOK, mapped)
 }
 
 func (a *App) APICreatePost(w http.ResponseWriter, r *http.Request) {
@@ -80,7 +93,7 @@ func (a *App) APICreatePost(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	input, err := parsePostPayload(payload)
+	input, channelIDs, err := parsePostPayload(payload)
 	if err != nil {
 		writeAPIError(w, http.StatusBadRequest, err.Error())
 		return
@@ -91,7 +104,19 @@ func (a *App) APICreatePost(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, http.StatusInternalServerError, "failed to create post")
 		return
 	}
-	writeJSON(w, http.StatusCreated, mapPostResponse(created))
+
+	if err := a.Store.ReplacePostChannels(r.Context(), created.ID, channelIDs); err != nil {
+		_ = a.Store.DeletePost(r.Context(), created.ID)
+		writeAPIError(w, http.StatusInternalServerError, "failed to save post channels")
+		return
+	}
+
+	mapped, mapErr := a.mapPostResponse(r.Context(), created)
+	if mapErr != nil {
+		writeAPIError(w, http.StatusInternalServerError, "failed to load post channels")
+		return
+	}
+	writeJSON(w, http.StatusCreated, mapped)
 }
 
 func (a *App) APIUpdatePost(w http.ResponseWriter, r *http.Request) {
@@ -107,7 +132,7 @@ func (a *App) APIUpdatePost(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	input, err := parsePostPayload(payload)
+	input, channelIDs, err := parsePostPayload(payload)
 	if err != nil {
 		writeAPIError(w, http.StatusBadRequest, err.Error())
 		return
@@ -122,7 +147,18 @@ func (a *App) APIUpdatePost(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, http.StatusInternalServerError, "failed to update post")
 		return
 	}
-	writeJSON(w, http.StatusOK, mapPostResponse(updated))
+
+	if err := a.Store.ReplacePostChannels(r.Context(), updated.ID, channelIDs); err != nil {
+		writeAPIError(w, http.StatusInternalServerError, "failed to save post channels")
+		return
+	}
+
+	mapped, mapErr := a.mapPostResponse(r.Context(), updated)
+	if mapErr != nil {
+		writeAPIError(w, http.StatusInternalServerError, "failed to load post channels")
+		return
+	}
+	writeJSON(w, http.StatusOK, mapped)
 }
 
 func (a *App) APIDeletePost(w http.ResponseWriter, r *http.Request) {
@@ -165,10 +201,15 @@ func (a *App) APISendNowPost(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, http.StatusInternalServerError, "post sent but failed to reload record")
 		return
 	}
-	writeJSON(w, http.StatusOK, mapPostResponse(post))
+	mapped, mapErr := a.mapPostResponse(r.Context(), post)
+	if mapErr != nil {
+		writeAPIError(w, http.StatusInternalServerError, "failed to load post channels")
+		return
+	}
+	writeJSON(w, http.StatusOK, mapped)
 }
 
-func parsePostPayload(payload postPayload) (db.PostInput, error) {
+func parsePostPayload(payload postPayload) (db.PostInput, []int64, error) {
 	status := model.PostStatus(strings.TrimSpace(payload.Status))
 	text := strings.TrimSpace(payload.Text)
 
@@ -176,7 +217,7 @@ func parsePostPayload(payload postPayload) (db.PostInput, error) {
 	if payload.ScheduledAt != nil {
 		value, err := parseRFC3339(*payload.ScheduledAt)
 		if err != nil {
-			return db.PostInput{}, errors.New("scheduled_at must be RFC3339")
+			return db.PostInput{}, nil, errors.New("scheduled_at must be RFC3339")
 		}
 		scheduledAt = value
 	}
@@ -190,22 +231,28 @@ func parsePostPayload(payload postPayload) (db.PostInput, error) {
 	}
 
 	if err := model.ValidateEditableInput(text, status, scheduledAt, mediaURL); err != nil {
-		return db.PostInput{}, err
+		return db.PostInput{}, nil, err
 	}
 
-	return db.PostInput{ScheduledAt: scheduledAt, Text: text, Status: status, MediaURL: mediaURL}, nil
+	return db.PostInput{ScheduledAt: scheduledAt, Text: text, Status: status, MediaURL: mediaURL}, dedupeChannelIDs(payload.ChannelIDs), nil
 }
 
-func mapPostResponse(post model.Post) postResponse {
+func (a *App) mapPostResponse(ctx context.Context, post model.Post) (postResponse, error) {
+	channelIDs, err := a.Store.ListPostChannelIDs(ctx, post.ID)
+	if err != nil {
+		return postResponse{}, err
+	}
+
 	response := postResponse{
-		ID:        post.ID,
-		Text:      post.Text,
-		Status:    string(post.Status),
-		CreatedAt: post.CreatedAt.UTC().Format(time.RFC3339),
-		UpdatedAt: post.UpdatedAt.UTC().Format(time.RFC3339),
-		FailCount: post.FailCount,
-		LastError: post.LastError,
-		MediaURL:  post.MediaURL,
+		ID:         post.ID,
+		Text:       post.Text,
+		Status:     string(post.Status),
+		CreatedAt:  post.CreatedAt.UTC().Format(time.RFC3339),
+		UpdatedAt:  post.UpdatedAt.UTC().Format(time.RFC3339),
+		FailCount:  post.FailCount,
+		LastError:  post.LastError,
+		MediaURL:   post.MediaURL,
+		ChannelIDs: channelIDs,
 	}
 	if post.ScheduledAt != nil {
 		value := post.ScheduledAt.UTC().Format(time.RFC3339)
@@ -219,5 +266,21 @@ func mapPostResponse(post model.Post) postResponse {
 		value := post.NextRetryAt.UTC().Format(time.RFC3339)
 		response.NextRetryAt = &value
 	}
-	return response
+	return response, nil
+}
+
+func dedupeChannelIDs(ids []int64) []int64 {
+	seen := make(map[int64]struct{}, len(ids))
+	values := make([]int64, 0, len(ids))
+	for _, id := range ids {
+		if id <= 0 {
+			continue
+		}
+		if _, exists := seen[id]; exists {
+			continue
+		}
+		seen[id] = struct{}{}
+		values = append(values, id)
+	}
+	return values
 }

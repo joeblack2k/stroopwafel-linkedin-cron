@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{.Title}} · linkedin-cron</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <header class="topbar">
+    <h1>linkedin-cron</h1>
+    <nav>
+      <a href="/calendar">Calendar</a>
+      <a href="/posts/new">New Post</a>
+      <a href="/settings">Settings</a>
+      <a href="/settings/channels">Channels</a>
+    </nav>
+  </header>
+
+  <main class="container narrow">
+    <h2>Channels</h2>
+    {{if .Message}}<div class="notice success">{{.Message}}</div>{{end}}
+    {{if .Error}}<div class="notice error">{{.Error}}</div>{{end}}
+
+    <section class="actions">
+      <h3>Add channel</h3>
+      <form method="post" action="/settings/channels" class="stack">
+        <label>
+          Type
+          <select name="type" required>
+            <option value="linkedin" {{if eq .Form.Type "linkedin"}}selected{{end}}>linkedin</option>
+            <option value="facebook-page" {{if eq .Form.Type "facebook-page"}}selected{{end}}>facebook-page</option>
+            <option value="dry-run" {{if or (eq .Form.Type "") (eq .Form.Type "dry-run")}}selected{{end}}>dry-run</option>
+          </select>
+        </label>
+
+        <label>
+          Display name
+          <input type="text" name="display_name" value="{{.Form.DisplayName}}" placeholder="LinkedIn Company Page" required>
+        </label>
+
+        <label>
+          LinkedIn access token
+          <input type="password" name="linkedin_access_token" value="{{.Form.LinkedInAccessToken}}" placeholder="Optional unless type=linkedin">
+        </label>
+
+        <label>
+          LinkedIn author URN
+          <input type="text" name="linkedin_author_urn" value="{{.Form.LinkedInAuthorURN}}" placeholder="urn:li:person:...">
+        </label>
+
+        <label>
+          LinkedIn API base URL
+          <input type="url" name="linkedin_api_base_url" value="{{.Form.LinkedInAPIBaseURL}}" placeholder="https://api.linkedin.com">
+        </label>
+
+        <label>
+          Facebook page access token
+          <input type="password" name="facebook_page_access_token" value="{{.Form.FacebookPageAccessToken}}" placeholder="Optional unless type=facebook-page">
+        </label>
+
+        <label>
+          Facebook page ID
+          <input type="text" name="facebook_page_id" value="{{.Form.FacebookPageID}}" placeholder="123456789012345">
+        </label>
+
+        <label>
+          Facebook API base URL
+          <input type="url" name="facebook_api_base_url" value="{{.Form.FacebookAPIBaseURL}}" placeholder="https://graph.facebook.com/v22.0">
+        </label>
+
+        <div class="button-row">
+          <button type="submit">Add channel</button>
+        </div>
+      </form>
+    </section>
+
+    <section class="actions">
+      <h3>Configured channels</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>Name</th>
+            <th>Type</th>
+            <th>Status</th>
+            <th>Config</th>
+            <th>Last test</th>
+            <th>Action</th>
+          </tr>
+        </thead>
+        <tbody>
+          {{if .Channels}}
+            {{range .Channels}}
+              <tr>
+                <td>{{.ID}}</td>
+                <td>{{.DisplayName}}</td>
+                <td>{{.Type}}</td>
+                <td>{{.Status}}</td>
+                <td>
+                  {{if eq .Type "linkedin"}}
+                    token={{if .LinkedInConfigured}}{{.LinkedInTokenMasked}}{{else}}missing{{end}}<br>
+                    author={{if .LinkedInConfigured}}{{.LinkedInAuthorMasked}}{{else}}missing{{end}}
+                  {{else if eq .Type "facebook-page"}}
+                    token={{if .FacebookConfigured}}{{.FacebookTokenMasked}}{{else}}missing{{end}}<br>
+                    page={{if .FacebookConfigured}}{{.FacebookPageIDMasked}}{{else}}missing{{end}}
+                  {{else}}
+                    dry-run
+                  {{end}}
+                  {{if .LastError}}<br><span class="muted">err: {{.LastError}}</span>{{end}}
+                </td>
+                <td>{{if .LastTestAt}}{{.LastTestAt.Format "2006-01-02 15:04"}}{{else}}never{{end}}</td>
+                <td>
+                  <form method="post" action="/settings/channels/{{.ID}}/test" class="inline">
+                    <button type="submit">Test</button>
+                  </form>
+                  <form method="post" action="/settings/channels/{{.ID}}/delete" class="inline">
+                    <button type="submit" class="danger">Delete</button>
+                  </form>
+                </td>
+              </tr>
+            {{end}}
+          {{else}}
+            <tr>
+              <td colspan="7" class="muted">No channels configured yet</td>
+            </tr>
+          {{end}}
+        </tbody>
+      </table>
+    </section>
+  </main>
+</body>
+</html>

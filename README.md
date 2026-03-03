@@ -18,11 +18,13 @@ A lightweight Go monolith to draft, schedule, and publish social posts (LinkedIn
 - `internal/publisher`: publisher interface + dry-run implementation
 - `internal/linkedin`: LinkedIn HTTP publisher (config-gated)
 - `internal/facebook`: Facebook Page Graph API publisher (config-gated)
+- `channels` and `post_channels` DB model to manage publish channels via GUI/API
 
 ## Agent Docs
 
 - Deployment: `docs/agents-deployment.md`
 - API usage/security: `docs/agents-usage.md`
+- Fase-1 backlog: `docs/phase1-backlog.md`
 
 There is no internal background job loop in the server and no Node build pipeline.
 
@@ -110,6 +112,10 @@ Security behavior:
 - `POST /posts/{id}/delete`
 - `POST /posts/{id}/send-now`
 - `GET /settings`
+- `GET /settings/channels`
+- `POST /settings/channels`
+- `POST /settings/channels/{id}/test`
+- `POST /settings/channels/{id}/delete`
 
 ## JSON API Endpoints
 
@@ -121,12 +127,17 @@ Security behavior:
 - `DELETE /api/v1/posts/{id}`
 - `POST /api/v1/posts/{id}/send-now`
 - `GET /api/v1/settings/status`
+- `GET /api/v1/channels`
+- `POST /api/v1/channels`
+- `DELETE /api/v1/channels/{id}`
+- `POST /api/v1/channels/{id}/test`
 
 Notes:
 
 - all API requests/responses are JSON
 - timestamps are RFC3339
 - API errors use `{ "error": "..." }`
+- posts support `channel_ids` for assignment
 
 ## Scheduler & Retry Behavior
 

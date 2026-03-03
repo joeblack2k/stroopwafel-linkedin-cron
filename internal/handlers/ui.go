@@ -38,6 +38,8 @@ type PostFormData struct {
 	IsEdit      bool
 	PostID      int64
 	Form        PostFormInput
+	Channels    []model.Channel
+	Selected    map[int64]bool
 	Message     string
 	Error       string
 	Location    *time.Location
@@ -50,6 +52,7 @@ type PostFormInput struct {
 	Text        string
 	Status      string
 	MediaURL    string
+	ChannelIDs  []int64
 }
 
 type SettingsPageData struct {
@@ -148,10 +151,18 @@ func (a *App) Calendar(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *App) NewPost(w http.ResponseWriter, r *http.Request) {
+	channels, err := a.Store.ListChannels(r.Context())
+	if err != nil {
+		http.Error(w, "failed to load channels", http.StatusInternalServerError)
+		return
+	}
+
 	data := PostFormData{
 		Title:    "New Post",
 		IsEdit:   false,
 		Location: a.Config.Location,
+		Channels: channels,
+		Selected: make(map[int64]bool),
 		Form: PostFormInput{
 			Status: "draft",
 		},
@@ -171,12 +182,20 @@ func (a *App) CreatePost(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	channels, channelErr := a.Store.ListChannels(r.Context())
+	if channelErr != nil {
+		http.Error(w, "failed to load channels", http.StatusInternalServerError)
+		return
+	}
+
 	input, form, err := a.parsePostForm(r)
 	if err != nil {
 		data := PostFormData{
 			Title:    "New Post",
 			IsEdit:   false,
 			Form:     form,
+			Channels: channels,
+			Selected: selectedChannelIDMap(form.ChannelIDs),
 			Error:    err.Error(),
 			Location: a.Config.Location,
 			ReturnTo: safeReturnPath(r.FormValue("return_to")),
@@ -192,6 +211,12 @@ func (a *App) CreatePost(w http.ResponseWriter, r *http.Request) {
 	created, createErr := a.Store.CreatePost(r.Context(), input)
 	if createErr != nil {
 		http.Error(w, "failed to create post", http.StatusInternalServerError)
+		return
+	}
+
+	if err := a.Store.ReplacePostChannels(r.Context(), created.ID, form.ChannelIDs); err != nil {
+		_ = a.Store.DeletePost(r.Context(), created.ID)
+		http.Error(w, "failed to save post channels", http.StatusInternalServerError)
 		return
 	}
 
@@ -220,6 +245,17 @@ func (a *App) EditPost(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	channels, err := a.Store.ListChannels(r.Context())
+	if err != nil {
+		http.Error(w, "failed to load channels", http.StatusInternalServerError)
+		return
+	}
+	selectedIDs, err := a.Store.ListPostChannelIDs(r.Context(), post.ID)
+	if err != nil {
+		http.Error(w, "failed to load post channels", http.StatusInternalServerError)
+		return
+	}
+
 	form := PostFormInput{
 		Text:     post.Text,
 		Status:   string(post.Status),
@@ -234,6 +270,8 @@ func (a *App) EditPost(w http.ResponseWriter, r *http.Request) {
 		IsEdit:      true,
 		PostID:      post.ID,
 		Form:        form,
+		Channels:    channels,
+		Selected:    selectedChannelIDMap(selectedIDs),
 		Message:     strings.TrimSpace(r.URL.Query().Get("msg")),
 		Error:       strings.TrimSpace(r.URL.Query().Get("err")),
 		Location:    a.Config.Location,
@@ -260,6 +298,12 @@ func (a *App) UpdatePost(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	channels, channelErr := a.Store.ListChannels(r.Context())
+	if channelErr != nil {
+		http.Error(w, "failed to load channels", http.StatusInternalServerError)
+		return
+	}
+
 	input, form, parseErr := a.parsePostForm(r)
 	if parseErr != nil {
 		data := PostFormData{
@@ -267,6 +311,8 @@ func (a *App) UpdatePost(w http.ResponseWriter, r *http.Request) {
 			IsEdit:      true,
 			PostID:      id,
 			Form:        form,
+			Channels:    channels,
+			Selected:    selectedChannelIDMap(form.ChannelIDs),
 			Error:       parseErr.Error(),
 			Location:    a.Config.Location,
 			ReturnTo:    safeReturnPath(r.FormValue("return_to")),
@@ -287,6 +333,11 @@ func (a *App) UpdatePost(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		http.Error(w, "failed to update post", http.StatusInternalServerError)
+		return
+	}
+
+	if err := a.Store.ReplacePostChannels(r.Context(), updated.ID, form.ChannelIDs); err != nil {
+		http.Error(w, "failed to save post channels", http.StatusInternalServerError)
 		return
 	}
 
@@ -451,10 +502,11 @@ func (a *App) parsePostForm(r *http.Request) (db.PostInput, PostFormInput, error
 	scheduledAtRaw := strings.TrimSpace(r.FormValue("scheduled_at"))
 	text := strings.TrimSpace(r.FormValue("text"))
 	mediaURLRaw := strings.TrimSpace(r.FormValue("media_url"))
+	channelIDs := parseChannelIDs(r.Form["channel_ids"])
 
 	parsedScheduledAt, err := parseDateTimeLocal(scheduledAtRaw, a.Config.Location)
 	if err != nil {
-		return db.PostInput{}, PostFormInput{ScheduledAt: scheduledAtRaw, Text: text, Status: string(status), MediaURL: mediaURLRaw}, errors.New("scheduled_at must be a valid datetime")
+		return db.PostInput{}, PostFormInput{ScheduledAt: scheduledAtRaw, Text: text, Status: string(status), MediaURL: mediaURLRaw, ChannelIDs: channelIDs}, errors.New("scheduled_at must be a valid datetime")
 	}
 
 	var mediaURL *string
@@ -463,10 +515,10 @@ func (a *App) parsePostForm(r *http.Request) (db.PostInput, PostFormInput, error
 	}
 
 	if err := model.ValidateEditableInput(text, status, parsedScheduledAt, mediaURL); err != nil {
-		return db.PostInput{}, PostFormInput{ScheduledAt: scheduledAtRaw, Text: text, Status: string(status), MediaURL: mediaURLRaw}, err
+		return db.PostInput{}, PostFormInput{ScheduledAt: scheduledAtRaw, Text: text, Status: string(status), MediaURL: mediaURLRaw, ChannelIDs: channelIDs}, err
 	}
 
-	return db.PostInput{ScheduledAt: parsedScheduledAt, Text: text, Status: status, MediaURL: mediaURL}, PostFormInput{ScheduledAt: scheduledAtRaw, Text: text, Status: string(status), MediaURL: mediaURLRaw}, nil
+	return db.PostInput{ScheduledAt: parsedScheduledAt, Text: text, Status: status, MediaURL: mediaURL}, PostFormInput{ScheduledAt: scheduledAtRaw, Text: text, Status: string(status), MediaURL: mediaURLRaw, ChannelIDs: channelIDs}, nil
 }
 
 func beginningOfWeek(value time.Time) time.Time {
@@ -504,4 +556,29 @@ func derefString(value *string) string {
 		return ""
 	}
 	return *value
+}
+
+func parseChannelIDs(values []string) []int64 {
+	ids := make([]int64, 0, len(values))
+	seen := make(map[int64]struct{}, len(values))
+	for _, value := range values {
+		id, err := parseID(strings.TrimSpace(value))
+		if err != nil {
+			continue
+		}
+		if _, exists := seen[id]; exists {
+			continue
+		}
+		seen[id] = struct{}{}
+		ids = append(ids, id)
+	}
+	return ids
+}
+
+func selectedChannelIDMap(ids []int64) map[int64]bool {
+	selected := make(map[int64]bool, len(ids))
+	for _, id := range ids {
+		selected[id] = true
+	}
+	return selected
 }

@@ -132,8 +132,12 @@ func registerProtectedRoutes(mux *http.ServeMux, uiAuth func(http.Handler) http.
 	mux.Handle("POST /posts/{id}/delete", uiAuth(http.HandlerFunc(app.DeletePost)))
 	mux.Handle("POST /posts/{id}/send-now", uiAuth(http.HandlerFunc(app.SendNowPost)))
 	mux.Handle("GET /settings", uiAuth(http.HandlerFunc(app.Settings)))
+	mux.Handle("GET /settings/channels", uiAuth(http.HandlerFunc(app.Channels)))
 	mux.Handle("POST /settings/api-keys", uiAuth(http.HandlerFunc(app.CreateAPIKey)))
 	mux.Handle("POST /settings/api-keys/{id}/revoke", uiAuth(http.HandlerFunc(app.RevokeAPIKey)))
+	mux.Handle("POST /settings/channels", uiAuth(http.HandlerFunc(app.CreateChannel)))
+	mux.Handle("POST /settings/channels/{id}/delete", uiAuth(http.HandlerFunc(app.DeleteChannel)))
+	mux.Handle("POST /settings/channels/{id}/test", uiAuth(http.HandlerFunc(app.TestChannel)))
 
 	mux.Handle("GET /api/v1/posts", apiAuth(http.HandlerFunc(app.APIListPosts)))
 	mux.Handle("GET /api/v1/posts/{id}", apiAuth(http.HandlerFunc(app.APIGetPost)))
@@ -142,6 +146,10 @@ func registerProtectedRoutes(mux *http.ServeMux, uiAuth func(http.Handler) http.
 	mux.Handle("DELETE /api/v1/posts/{id}", apiAuth(http.HandlerFunc(app.APIDeletePost)))
 	mux.Handle("POST /api/v1/posts/{id}/send-now", apiAuth(http.HandlerFunc(app.APISendNowPost)))
 	mux.Handle("GET /api/v1/settings/status", apiAuth(http.HandlerFunc(app.APISettingsStatus)))
+	mux.Handle("GET /api/v1/channels", apiAuth(http.HandlerFunc(app.APIListChannels)))
+	mux.Handle("POST /api/v1/channels", apiAuth(http.HandlerFunc(app.APICreateChannel)))
+	mux.Handle("DELETE /api/v1/channels/{id}", apiAuth(http.HandlerFunc(app.APIDeleteChannel)))
+	mux.Handle("POST /api/v1/channels/{id}/test", apiAuth(http.HandlerFunc(app.APITestChannel)))
 }
 
 func buildPublisher(cfg config.Config, logger *slog.Logger) (publisher.Publisher, string) {

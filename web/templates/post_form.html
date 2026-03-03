@@ -14,6 +14,7 @@
       <a href="/calendar">Calendar</a>
       <a href="/posts/new">New Post</a>
       <a href="/settings">Settings</a>
+      <a href="/settings/channels">Channels</a>
     </nav>
   </header>
 
@@ -50,6 +51,20 @@
         Media URL (optional)
         <input type="url" name="media_url" value="{{.Form.MediaURL}}" placeholder="https://example.com/article">
       </label>
+
+      <fieldset>
+        <legend>Channels</legend>
+        {{if .Channels}}
+          {{range .Channels}}
+            <label class="checkbox-row">
+              <input type="checkbox" name="channel_ids" value="{{.ID}}" {{if index $.Selected .ID}}checked{{end}}>
+              <span>{{.DisplayName}} ({{.Type}})</span>
+            </label>
+          {{end}}
+        {{else}}
+          <p class="muted">No channels configured yet. Add one via <a href="/settings/channels">Settings → Channels</a>.</p>
+        {{end}}
+      </fieldset>
 
       <div class="button-row">
         <button type="submit">{{if .IsEdit}}Update Post{{else}}Create Post{{end}}</button>
