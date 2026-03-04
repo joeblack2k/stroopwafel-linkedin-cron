@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"log/slog"
 	"os"
 	"strings"
@@ -145,7 +146,7 @@ func persistWebhookOutcomes(ctx context.Context, store *db.Store, logger *slog.L
 			status = "delivered"
 		}
 
-		_, err := store.InsertWebhookDelivery(ctx, db.WebhookDeliveryInput{
+		delivery, err := store.InsertWebhookDelivery(ctx, db.WebhookDeliveryInput{
 			EventID:     outcome.EventID,
 			EventName:   outcome.EventName,
 			TargetURL:   outcome.TargetURL,
@@ -166,6 +167,53 @@ func persistWebhookOutcomes(ctx context.Context, store *db.Store, logger *slog.L
 				slog.String("event", outcome.EventName),
 				slog.String("url", outcome.TargetURL),
 				slog.String("error", err.Error()),
+			)
+			continue
+		}
+
+		if outcome.Delivered {
+			continue
+		}
+
+		payloadJSON := "{}"
+		if len(outcome.Payload) > 0 {
+			encodedPayload, marshalErr := json.Marshal(outcome.Payload)
+			if marshalErr != nil {
+				logger.LogAttrs(
+					ctx,
+					slog.LevelWarn,
+					"failed to marshal webhook replay payload",
+					slog.String("component", "webhook"),
+					slog.String("event", outcome.EventName),
+					slog.String("url", outcome.TargetURL),
+					slog.String("error", marshalErr.Error()),
+				)
+			} else {
+				payloadJSON = string(encodedPayload)
+			}
+		}
+
+		deliveryID := delivery.ID
+		if _, replayErr := store.InsertWebhookReplay(ctx, db.WebhookReplayInput{
+			DeliveryID: &deliveryID,
+			EventID:    outcome.EventID,
+			EventName:  outcome.EventName,
+			TargetURL:  outcome.TargetURL,
+			Source:     outcome.Source,
+			Payload:    payloadJSON,
+			Headers:    "{}",
+			Status:     db.WebhookReplayStatusQueued,
+			LastError:  outcome.Error,
+			HTTPStatus: outcome.HTTPStatus,
+		}); replayErr != nil {
+			logger.LogAttrs(
+				ctx,
+				slog.LevelWarn,
+				"failed to queue webhook replay",
+				slog.String("component", "webhook"),
+				slog.String("event", outcome.EventName),
+				slog.String("url", outcome.TargetURL),
+				slog.String("error", replayErr.Error()),
 			)
 		}
 	}

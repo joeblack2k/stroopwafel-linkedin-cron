@@ -18,6 +18,8 @@ Current verified score: `100/100`.
 
 ## P2 — GUI parity follow-through
 
+_All planned P-tracks are now completed._
+
 - [x] **+5** Add GUI analytics dashboard (weekly snapshot + channel delivery breakdown).
 - [x] Add webhook health panel in Settings + `GET /api/v1/settings/webhooks`.
-- [ ] Add webhook retry dashboard + manual replay tools.
+- [x] Add webhook retry dashboard + manual replay tools.

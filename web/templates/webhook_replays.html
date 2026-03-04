@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{.Title}} · linkedin-cron</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <script src="/static/app.js" defer></script>
+</head>
+<body>
+  <header class="topbar">
+    <h1>linkedin-cron</h1>
+    <nav>
+      <a href="/calendar">Calendar</a>
+      <a href="/posts/new">New Post</a>
+      <a href="/posts/bulk">Bulk</a>
+      <a href="/analytics">Analytics</a>
+      <a href="/settings/channels">Channels</a>
+      <a href="/settings">Settings</a>
+      <a href="/logout">Logout</a>
+    </nav>
+  </header>
+
+  <main class="container narrow">
+    <div class="page-head">
+      <div>
+        <h2>Webhook Replay Dashboard</h2>
+        <p class="muted">Retry failed webhook deliveries and monitor replay outcomes.</p>
+      </div>
+      <div class="button-row wrap">
+        <a class="button ghost" href="/settings">Back to settings</a>
+      </div>
+    </div>
+
+    {{if .Message}}<div class="notice success">{{.Message}}</div>{{end}}
+    {{if .Error}}<div class="notice error">{{.Error}}</div>{{end}}
+
+    <section class="panel">
+      <form method="get" action="/settings/webhooks/replays" class="stack">
+        <div class="button-row wrap">
+          <label>
+            Status
+            <select name="status">
+              <option value="" {{if eq .SelectedStatus ""}}selected{{end}}>All</option>
+              <option value="queued" {{if eq .SelectedStatus "queued"}}selected{{end}}>Queued</option>
+              <option value="processing" {{if eq .SelectedStatus "processing"}}selected{{end}}>Processing</option>
+              <option value="failed" {{if eq .SelectedStatus "failed"}}selected{{end}}>Failed</option>
+              <option value="delivered" {{if eq .SelectedStatus "delivered"}}selected{{end}}>Delivered</option>
+              <option value="cancelled" {{if eq .SelectedStatus "cancelled"}}selected{{end}}>Cancelled</option>
+            </select>
+          </label>
+          <label>
+            Page size
+            <input type="number" min="1" max="500" name="limit" value="{{.Limit}}">
+          </label>
+          <button type="submit">Apply filter</button>
+          <a class="button ghost" href="/settings/webhooks/replays">Reset</a>
+        </div>
+      </form>
+
+      <form method="post" action="/settings/webhooks/replays/replay-failed" class="button-row wrap" style="margin-top: .8rem;">
+        <label>
+          Replay failed limit
+          <input type="number" min="1" max="200" name="limit" value="20">
+        </label>
+        <button type="submit">Replay failed now</button>
+      </form>
+    </section>
+
+    <section class="panel">
+      <h3>Replay queue</h3>
+      <p class="muted">Total entries: {{.Total}}</p>
+      <table>
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>Status</th>
+            <th>Event</th>
+            <th>Target</th>
+            <th>Attempts</th>
+            <th>Last HTTP</th>
+            <th>Last error</th>
+            <th>Next attempt</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {{if .Rows}}
+            {{range .Rows}}
+              <tr>
+                <td>#{{.ID}}</td>
+                <td>{{.Status}}</td>
+                <td>
+                  <strong>{{.EventName}}</strong><br>
+                  <span class="muted">{{.EventID}}</span>
+                </td>
+                <td><code>{{.TargetURL}}</code></td>
+                <td>{{.AttemptCount}}</td>
+                <td>{{.LastHTTPStatus}}</td>
+                <td>{{.LastError}}</td>
+                <td>{{.NextAttemptAt}}</td>
+                <td>
+                  <div class="button-row wrap">
+                    <form method="post" action="/settings/webhooks/replays/{{.ID}}/replay" class="inline">
+                      <button type="submit">Replay now</button>
+                    </form>
+                    {{if ne .Status "cancelled"}}
+                      <form method="post" action="/settings/webhooks/replays/{{.ID}}/cancel" class="inline">
+                        <button type="submit" class="ghost">Cancel</button>
+                      </form>
+                    {{end}}
+                  </div>
+                </td>
+              </tr>
+            {{end}}
+          {{else}}
+            <tr>
+              <td colspan="9" class="muted">No webhook replays found</td>
+            </tr>
+          {{end}}
+        </tbody>
+      </table>
+
+      <div class="button-row wrap" style="margin-top: .8rem;">
+        {{if .HasPrev}}<a class="button ghost" href="{{.PrevURL}}">Previous</a>{{end}}
+        {{if .HasNext}}<a class="button ghost" href="{{.NextURL}}">Next</a>{{end}}
+      </div>
+    </section>
+  </main>
+</body>
+</html>

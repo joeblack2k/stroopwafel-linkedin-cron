@@ -183,6 +183,7 @@ API keys are stored hashed in SQLite.
 - List endpoints now support pagination and filters (`limit`, `offset`, `q`, status/type filters).
 - Publish lifecycle webhooks are emitted for agents (`publish.attempt.created`, `post.state.changed`).
 - Webhook delivery telemetry is persisted and exposed in Settings + API (`GET /api/v1/settings/webhooks`).
+- Webhook replay queue + manual replay tools are available in UI (`/settings/webhooks/replays`) and API (`/api/v1/webhooks/replays*`).
 - OpenAPI and error catalog are exposed at API metadata endpoints.
 
 ## UI Endpoints
@@ -210,6 +211,10 @@ API keys are stored hashed in SQLite.
 - `POST /posts/bulk/channels`
 - `POST /posts/bulk/send-now`
 - `GET /settings`
+- `GET /settings/webhooks/replays`
+- `POST /settings/webhooks/replays/replay-failed`
+- `POST /settings/webhooks/replays/{id}/replay`
+- `POST /settings/webhooks/replays/{id}/cancel`
 - `POST /settings/api-keys`
 - `POST /settings/api-keys/bot-handoff`
 - `POST /settings/api-keys/{id}/revoke`
@@ -243,6 +248,10 @@ API keys are stored hashed in SQLite.
 - `POST /api/v1/posts/bulk/channels`
 - `GET /api/v1/settings/status`
 - `GET /api/v1/settings/webhooks`
+- `GET /api/v1/webhooks/replays`
+- `POST /api/v1/webhooks/replays/{id}/replay`
+- `POST /api/v1/webhooks/replays/{id}/cancel`
+- `POST /api/v1/webhooks/replays/replay-failed`
 - `GET /api/v1/meta/openapi`
 - `GET /api/v1/meta/error-codes`
 - `GET /api/v1/analytics/overview`

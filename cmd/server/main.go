@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"log/slog"
 	"net/http"
 	"os"
@@ -164,6 +165,10 @@ func registerProtectedRoutes(mux *http.ServeMux, uiAuth func(http.Handler) http.
 	mux.Handle("POST /posts/{id}/send-and-delete", uiAuth(http.HandlerFunc(app.SendAndDeletePost)))
 	mux.Handle("POST /posts/{id}/reschedule", uiAuth(http.HandlerFunc(app.ReschedulePost)))
 	mux.Handle("GET /settings", uiAuth(http.HandlerFunc(app.Settings)))
+	mux.Handle("GET /settings/webhooks/replays", uiAuth(http.HandlerFunc(app.WebhookReplays)))
+	mux.Handle("POST /settings/webhooks/replays/replay-failed", uiAuth(http.HandlerFunc(app.ReplayFailedWebhooks)))
+	mux.Handle("POST /settings/webhooks/replays/{id}/replay", uiAuth(http.HandlerFunc(app.ReplayWebhook)))
+	mux.Handle("POST /settings/webhooks/replays/{id}/cancel", uiAuth(http.HandlerFunc(app.CancelWebhookReplay)))
 	mux.Handle("GET /settings/channels", uiAuth(http.HandlerFunc(app.Channels)))
 	mux.Handle("POST /settings/api-keys", uiAuth(http.HandlerFunc(app.CreateAPIKey)))
 	mux.Handle("POST /settings/api-keys/bot-handoff", uiAuth(http.HandlerFunc(app.CreateBotHandoff)))
@@ -198,6 +203,10 @@ func registerProtectedRoutes(mux *http.ServeMux, uiAuth func(http.Handler) http.
 	mux.Handle("POST /api/v1/posts/bulk/channels", apiMutating(app.APIBulkSetPostChannels))
 	mux.Handle("GET /api/v1/settings/status", apiAuth(http.HandlerFunc(app.APISettingsStatus)))
 	mux.Handle("GET /api/v1/settings/webhooks", apiAuth(http.HandlerFunc(app.APISettingsWebhookHealth)))
+	mux.Handle("GET /api/v1/webhooks/replays", apiAuth(http.HandlerFunc(app.APIListWebhookReplays)))
+	mux.Handle("POST /api/v1/webhooks/replays/{id}/replay", apiMutating(app.APIReplayWebhook))
+	mux.Handle("POST /api/v1/webhooks/replays/{id}/cancel", apiMutating(app.APICancelWebhookReplay))
+	mux.Handle("POST /api/v1/webhooks/replays/replay-failed", apiMutating(app.APIReplayFailedWebhooks))
 	mux.Handle("GET /api/v1/meta/openapi", apiAuth(http.HandlerFunc(app.APIOpenAPI)))
 	mux.Handle("GET /api/v1/meta/error-codes", apiAuth(http.HandlerFunc(app.APIErrorCatalog)))
 	mux.Handle("GET /api/v1/analytics/overview", apiAuth(http.HandlerFunc(app.APIAnalyticsOverview)))
@@ -296,7 +305,7 @@ func persistWebhookOutcomes(ctx context.Context, store *db.Store, logger *slog.L
 			status = "delivered"
 		}
 
-		_, err := store.InsertWebhookDelivery(ctx, db.WebhookDeliveryInput{
+		delivery, err := store.InsertWebhookDelivery(ctx, db.WebhookDeliveryInput{
 			EventID:     outcome.EventID,
 			EventName:   outcome.EventName,
 			TargetURL:   outcome.TargetURL,
@@ -317,6 +326,53 @@ func persistWebhookOutcomes(ctx context.Context, store *db.Store, logger *slog.L
 				slog.String("event", outcome.EventName),
 				slog.String("url", outcome.TargetURL),
 				slog.String("error", err.Error()),
+			)
+			continue
+		}
+
+		if outcome.Delivered {
+			continue
+		}
+
+		payloadJSON := "{}"
+		if len(outcome.Payload) > 0 {
+			encodedPayload, marshalErr := json.Marshal(outcome.Payload)
+			if marshalErr != nil {
+				logger.LogAttrs(
+					ctx,
+					slog.LevelWarn,
+					"failed to marshal webhook replay payload",
+					slog.String("component", "webhook"),
+					slog.String("event", outcome.EventName),
+					slog.String("url", outcome.TargetURL),
+					slog.String("error", marshalErr.Error()),
+				)
+			} else {
+				payloadJSON = string(encodedPayload)
+			}
+		}
+
+		deliveryID := delivery.ID
+		if _, replayErr := store.InsertWebhookReplay(ctx, db.WebhookReplayInput{
+			DeliveryID: &deliveryID,
+			EventID:    outcome.EventID,
+			EventName:  outcome.EventName,
+			TargetURL:  outcome.TargetURL,
+			Source:     outcome.Source,
+			Payload:    payloadJSON,
+			Headers:    "{}",
+			Status:     db.WebhookReplayStatusQueued,
+			LastError:  outcome.Error,
+			HTTPStatus: outcome.HTTPStatus,
+		}); replayErr != nil {
+			logger.LogAttrs(
+				ctx,
+				slog.LevelWarn,
+				"failed to queue webhook replay",
+				slog.String("component", "webhook"),
+				slog.String("event", outcome.EventName),
+				slog.String("url", outcome.TargetURL),
+				slog.String("error", replayErr.Error()),
 			)
 		}
 	}

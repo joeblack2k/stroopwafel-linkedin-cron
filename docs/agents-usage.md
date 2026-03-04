@@ -21,6 +21,10 @@ This runbook is for agents that operate the API while we close Postiz parity gap
    - `POST /api/v1/posts/{id}/send-and-delete`
 4. **Inspect and recover**
    - `GET /api/v1/settings/webhooks`
+   - `GET /api/v1/webhooks/replays`
+   - `POST /api/v1/webhooks/replays/{id}/replay`
+   - `POST /api/v1/webhooks/replays/{id}/cancel`
+   - `POST /api/v1/webhooks/replays/replay-failed`
    - `GET /api/v1/posts/{id}/attempts`
    - `POST /api/v1/posts/{id}/attempts/{attempt_id}/retry`
    - `POST /api/v1/posts/{id}/attempts/{attempt_id}/screenshot`
@@ -54,6 +58,7 @@ This runbook is for agents that operate the API while we close Postiz parity gap
   - `X-Stroopwafel-Timestamp`
   - `X-Stroopwafel-Signature` (when secret configured)
 - Delivery telemetry endpoint for agents: `GET /api/v1/settings/webhooks`.
+- Replay queue endpoints: `GET /api/v1/webhooks/replays`, `POST /api/v1/webhooks/replays/{id}/replay`, `POST /api/v1/webhooks/replays/replay-failed`.
 
 ## OpenAPI + error catalog
 

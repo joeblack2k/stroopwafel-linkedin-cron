@@ -242,6 +242,90 @@ paths:
                 $ref: '#/components/schemas/WebhookHealthResponse'
         '500':
           $ref: '#/components/responses/APIError'
+  /api/v1/webhooks/replays:
+    get:
+      summary: List webhook replay queue entries
+      parameters:
+        - in: query
+          name: limit
+          schema: { type: integer, minimum: 1, maximum: 500, default: 50 }
+        - in: query
+          name: offset
+          schema: { type: integer, minimum: 0, default: 0 }
+        - in: query
+          name: status
+          schema: { type: string, enum: [queued, processing, delivered, failed, cancelled] }
+        - in: query
+          name: target_url
+          schema: { type: string, format: uri }
+        - in: query
+          name: event_name
+          schema: { type: string }
+        - in: query
+          name: event_id
+          schema: { type: string }
+      responses:
+        '200':
+          description: Paginated webhook replay queue
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WebhookReplayListResponse'
+        '400':
+          $ref: '#/components/responses/APIError'
+  /api/v1/webhooks/replays/{id}/replay:
+    post:
+      summary: Replay a webhook queue entry now
+      responses:
+        '200':
+          description: Replay attempted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message: { type: string }
+                  replay:
+                    $ref: '#/components/schemas/WebhookReplay'
+  /api/v1/webhooks/replays/{id}/cancel:
+    post:
+      summary: Cancel a webhook queue entry
+      responses:
+        '200':
+          description: Replay cancelled
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message: { type: string }
+                  replay:
+                    $ref: '#/components/schemas/WebhookReplay'
+  /api/v1/webhooks/replays/replay-failed:
+    post:
+      summary: Replay a batch of failed webhook queue entries
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                limit: { type: integer, minimum: 1, maximum: 200, default: 20 }
+      responses:
+        '200':
+          description: Bulk replay result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  requested: { type: integer }
+                  succeeded: { type: integer }
+                  failed: { type: integer }
+                  errors:
+                    type: array
+                    items: { type: string }
   /api/v1/meta/openapi:
     get:
       summary: OpenAPI contract (YAML)
@@ -457,6 +541,34 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/WebhookDeliveryHealth'
+    WebhookReplay:
+      type: object
+      required: [id, event_id, event_name, target_url, source, status, attempt_count, created_at, updated_at]
+      properties:
+        id: { type: integer }
+        delivery_id: { type: integer, nullable: true }
+        event_id: { type: string }
+        event_name: { type: string }
+        target_url: { type: string, format: uri }
+        source: { type: string }
+        status: { type: string, enum: [queued, processing, delivered, failed, cancelled] }
+        attempt_count: { type: integer }
+        last_error: { type: string, nullable: true }
+        last_http_status: { type: integer, nullable: true }
+        last_attempt_at: { type: string, format: date-time, nullable: true }
+        next_attempt_at: { type: string, format: date-time, nullable: true }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+    WebhookReplayListResponse:
+      type: object
+      required: [items, pagination]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/WebhookReplay'
+        pagination:
+          $ref: '#/components/schemas/Pagination'
     ErrorCatalogEntry:
       type: object
       required: [code, status, description]

@@ -54,8 +54,8 @@ Out of scope (for this phase):
 2. ✅ Published OpenAPI contract and machine-readable error catalog.
 3. ✅ Added outbound publish lifecycle webhooks (`publish.attempt.created`, `post.state.changed`).
 
-## Next focus (Phase 2)
+## Phase 2 result (completed)
 
-1. Add webhook retry dashboard/manual replay tools.
-2. Add richer analytics slices (date/channel filters) without increasing frontend weight.
-3. Add rate-limit aware delivery queue controls for webhook retries.
+1. ✅ Added webhook retry dashboard with manual replay/cancel tools in UI.
+2. ✅ Added replay queue APIs for agents (`GET /api/v1/webhooks/replays`, replay/cancel/bulk replay-failed).
+3. ✅ Added persisted webhook replay queue state and backoff-aware next-attempt tracking.

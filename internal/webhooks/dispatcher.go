@@ -43,6 +43,7 @@ type DeliveryOutcome struct {
 	Delivered   bool
 	HTTPStatus  *int
 	Error       *string
+	Payload     map[string]any
 }
 
 func NewDispatcher(urls []string, secret string, source string, logger *slog.Logger) *Dispatcher {
@@ -171,6 +172,17 @@ func normalizeURLs(urls []string) []string {
 		values = append(values, trimmed)
 	}
 	return values
+}
+
+func clonePayload(payload map[string]any) map[string]any {
+	if len(payload) == 0 {
+		return map[string]any{}
+	}
+	cloned := make(map[string]any, len(payload))
+	for key, value := range payload {
+		cloned[key] = value
+	}
+	return cloned
 }
 
 func defaultSource(source string) string {
