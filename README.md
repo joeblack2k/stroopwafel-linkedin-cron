@@ -254,6 +254,8 @@ API keys are stored hashed in SQLite.
 - `GET /api/v1/settings/status`
 - `GET /api/v1/settings/webhooks`
 - `GET /api/v1/webhooks/replays`
+- `GET /api/v1/webhooks/dead-letters`
+- `GET /api/v1/webhooks/dead-letters/alerts`
 - `POST /api/v1/webhooks/replays/{id}/replay`
 - `POST /api/v1/webhooks/replays/{id}/cancel`
 - `POST /api/v1/webhooks/replays/replay-failed`
@@ -271,6 +273,7 @@ API keys are stored hashed in SQLite.
 - `GET /api/v1/channels`
 - `POST /api/v1/channels`
 - `PUT /api/v1/channels/{id}`
+- `POST /api/v1/channels/{id}/rotate-credentials`
 - `GET /api/v1/channels/{id}/rules`
 - `PUT /api/v1/channels/{id}/rules`
 - `GET /api/v1/channels/{id}/audit`

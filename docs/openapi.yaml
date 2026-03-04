@@ -284,7 +284,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/ChannelMutationRequest'
+              $ref: '#/components/schemas/ChannelUpdateRequest'
       responses:
         '200':
           description: Updated channel
@@ -292,6 +292,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Channel'
+        '400':
+          $ref: '#/components/responses/APIError'
     delete:
       summary: Delete channel
       parameters:
@@ -299,6 +301,28 @@ paths:
       responses:
         '204':
           description: Deleted
+  /api/v1/channels/{id}/rotate-credentials:
+    post:
+      summary: Rotate channel credentials
+      parameters:
+        - $ref: '#/components/parameters/ChannelID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChannelRotateCredentialsRequest'
+      responses:
+        '200':
+          description: Credentials rotated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChannelRotateCredentialsResponse'
+        '400':
+          $ref: '#/components/responses/APIError'
+        '404':
+          $ref: '#/components/responses/APIError'
   /api/v1/channels/{id}/retry-policy:
     get:
       summary: Get channel retry policy
@@ -584,6 +608,65 @@ paths:
                 $ref: '#/components/schemas/WebhookReplayListResponse'
         '400':
           $ref: '#/components/responses/APIError'
+  /api/v1/webhooks/dead-letters:
+    get:
+      summary: List terminal webhook dead letters
+      parameters:
+        - in: query
+          name: limit
+          schema: { type: integer, minimum: 1, maximum: 500, default: 50 }
+        - in: query
+          name: offset
+          schema: { type: integer, minimum: 0, default: 0 }
+        - in: query
+          name: min_attempts
+          schema: { type: integer, minimum: 1, default: 3 }
+        - in: query
+          name: target_url
+          schema: { type: string, format: uri }
+        - in: query
+          name: event_name
+          schema: { type: string }
+        - in: query
+          name: event_id
+          schema: { type: string }
+      responses:
+        '200':
+          description: Paginated webhook dead-letter queue
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WebhookReplayListResponse'
+        '400':
+          $ref: '#/components/responses/APIError'
+  /api/v1/webhooks/dead-letters/alerts:
+    get:
+      summary: Dead-letter threshold alert status
+      parameters:
+        - in: query
+          name: threshold
+          schema: { type: integer, minimum: 1, default: 10 }
+        - in: query
+          name: min_attempts
+          schema: { type: integer, minimum: 1, default: 3 }
+        - in: query
+          name: target_url
+          schema: { type: string, format: uri }
+        - in: query
+          name: event_name
+          schema: { type: string }
+        - in: query
+          name: event_id
+          schema: { type: string }
+      responses:
+        '200':
+          description: Dead-letter alert summary
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WebhookDeadLetterAlertsResponse'
+        '400':
+          $ref: '#/components/responses/APIError'
   /api/v1/webhooks/replays/{id}/replay:
     post:
       summary: Replay a webhook queue entry now
@@ -843,6 +926,36 @@ components:
         instagram_access_token: { type: string, nullable: true }
         instagram_business_account_id: { type: string, nullable: true }
         instagram_api_base_url: { type: string, format: uri, nullable: true }
+    ChannelUpdateRequest:
+      type: object
+      properties:
+        display_name: { type: string, nullable: true }
+        linkedin_author_urn: { type: string, nullable: true }
+        linkedin_api_base_url: { type: string, format: uri, nullable: true }
+        facebook_page_id: { type: string, nullable: true }
+        facebook_api_base_url: { type: string, format: uri, nullable: true }
+        instagram_business_account_id: { type: string, nullable: true }
+        instagram_api_base_url: { type: string, format: uri, nullable: true }
+        linkedin_access_token_action: { type: string, enum: [keep, replace, clear] }
+        linkedin_access_token: { type: string, nullable: true }
+        facebook_page_access_token_action: { type: string, enum: [keep, replace, clear] }
+        facebook_page_access_token: { type: string, nullable: true }
+        instagram_access_token_action: { type: string, enum: [keep, replace, clear] }
+        instagram_access_token: { type: string, nullable: true }
+    ChannelRotateCredentialsRequest:
+      allOf:
+        - $ref: '#/components/schemas/ChannelUpdateRequest'
+        - type: object
+          properties:
+            validate: { type: boolean, default: true }
+    ChannelRotateCredentialsResponse:
+      type: object
+      required: [message, validated, channel]
+      properties:
+        message: { type: string }
+        validated: { type: boolean }
+        channel:
+          $ref: '#/components/schemas/Channel'
     MediaAsset:
       type: object
       required: [id, media_url, media_type, size_bytes, source, created_at, updated_at]
@@ -1032,6 +1145,17 @@ components:
             $ref: '#/components/schemas/WebhookReplay'
         pagination:
           $ref: '#/components/schemas/Pagination'
+    WebhookDeadLetterAlertsResponse:
+      type: object
+      required: [threshold, current, alert, min_attempts]
+      properties:
+        threshold: { type: integer }
+        current: { type: integer }
+        alert: { type: boolean }
+        min_attempts: { type: integer }
+        target_url: { type: string, format: uri, nullable: true }
+        event_name: { type: string, nullable: true }
+        event_id: { type: string, nullable: true }
     PublishAttempt:
       type: object
       required: [id, post_id, channel_id, channel_name, channel_type, attempt_no, attempted_at, status]

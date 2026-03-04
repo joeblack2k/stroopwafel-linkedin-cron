@@ -39,6 +39,24 @@ type webhookReplayListResponse struct {
 	Pagination paginationResponse      `json:"pagination"`
 }
 
+type webhookDeadLetterAlertsResponse struct {
+	Threshold   int                         `json:"threshold"`
+	Current     int                         `json:"current"`
+	Alert       bool                        `json:"alert"`
+	MinAttempts int                         `json:"min_attempts"`
+	TargetURL   string                      `json:"target_url,omitempty"`
+	EventName   string                      `json:"event_name,omitempty"`
+	EventID     string                      `json:"event_id,omitempty"`
+	Filter      webhookDeadLetterFilterEcho `json:"filter"`
+}
+
+type webhookDeadLetterFilterEcho struct {
+	MinAttempts int    `json:"min_attempts"`
+	TargetURL   string `json:"target_url,omitempty"`
+	EventName   string `json:"event_name,omitempty"`
+	EventID     string `json:"event_id,omitempty"`
+}
+
 type webhookReplayBulkPayload struct {
 	Limit     int    `json:"limit"`
 	TargetURL string `json:"target_url,omitempty"`
@@ -113,6 +131,88 @@ func (a *App) APIListWebhookReplays(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, webhookReplayListResponse{
 		Items:      items,
 		Pagination: buildPagination(limit, offset, total),
+	})
+}
+
+func (a *App) APIListWebhookDeadLetters(w http.ResponseWriter, r *http.Request) {
+	minAttempts, err := parsePositiveQueryInt(r.URL.Query().Get("min_attempts"), 3)
+	if err != nil {
+		writeAPIError(w, http.StatusBadRequest, "min_attempts must be a positive integer")
+		return
+	}
+
+	filter := db.WebhookDeadLetterFilter{
+		TargetURL:   strings.TrimSpace(r.URL.Query().Get("target_url")),
+		EventName:   strings.TrimSpace(r.URL.Query().Get("event_name")),
+		EventID:     strings.TrimSpace(r.URL.Query().Get("event_id")),
+		MinAttempts: minAttempts,
+	}
+
+	limit := parseLimit(r.URL.Query().Get("limit"), 50)
+	offset := parseOffset(r.URL.Query().Get("offset"), 0)
+
+	total, err := a.Store.CountWebhookDeadLetters(r.Context(), filter)
+	if err != nil {
+		writeAPIError(w, http.StatusInternalServerError, "failed to count webhook dead letters")
+		return
+	}
+
+	replays, err := a.Store.ListWebhookDeadLetters(r.Context(), filter, limit, offset)
+	if err != nil {
+		writeAPIError(w, http.StatusInternalServerError, "failed to list webhook dead letters")
+		return
+	}
+
+	items := make([]webhookReplayResponse, 0, len(replays))
+	for _, replay := range replays {
+		items = append(items, mapWebhookReplayResponse(replay))
+	}
+
+	writeJSON(w, http.StatusOK, webhookReplayListResponse{
+		Items:      items,
+		Pagination: buildPagination(limit, offset, total),
+	})
+}
+
+func (a *App) APIWebhookDeadLetterAlerts(w http.ResponseWriter, r *http.Request) {
+	minAttempts, err := parsePositiveQueryInt(r.URL.Query().Get("min_attempts"), 3)
+	if err != nil {
+		writeAPIError(w, http.StatusBadRequest, "min_attempts must be a positive integer")
+		return
+	}
+	threshold, err := parsePositiveQueryInt(r.URL.Query().Get("threshold"), 10)
+	if err != nil {
+		writeAPIError(w, http.StatusBadRequest, "threshold must be a positive integer")
+		return
+	}
+
+	filter := db.WebhookDeadLetterFilter{
+		TargetURL:   strings.TrimSpace(r.URL.Query().Get("target_url")),
+		EventName:   strings.TrimSpace(r.URL.Query().Get("event_name")),
+		EventID:     strings.TrimSpace(r.URL.Query().Get("event_id")),
+		MinAttempts: minAttempts,
+	}
+
+	count, err := a.Store.CountWebhookDeadLetters(r.Context(), filter)
+	if err != nil {
+		writeAPIError(w, http.StatusInternalServerError, "failed to count webhook dead letters")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, webhookDeadLetterAlertsResponse{
+		Threshold:   threshold,
+		Current:     count,
+		Alert:       count >= threshold,
+		MinAttempts: minAttempts,
+		TargetURL:   filter.TargetURL,
+		EventName:   filter.EventName,
+		EventID:     filter.EventID,
+		Filter: webhookDeadLetterFilterEcho{
+			MinAttempts: minAttempts,
+			TargetURL:   filter.TargetURL,
+			EventName:   filter.EventName,
+			EventID:     filter.EventID,
+		},
 	})
 }
 
@@ -548,4 +648,16 @@ func isWebhookReplayStatus(value string) bool {
 	default:
 		return false
 	}
+}
+
+func parsePositiveQueryInt(raw string, fallback int) (int, error) {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return fallback, nil
+	}
+	value, err := strconv.Atoi(trimmed)
+	if err != nil || value <= 0 {
+		return 0, fmt.Errorf("must be a positive integer")
+	}
+	return value, nil
 }

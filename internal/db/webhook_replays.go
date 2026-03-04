@@ -58,6 +58,13 @@ type WebhookReplayFilter struct {
 	EventID   string
 }
 
+type WebhookDeadLetterFilter struct {
+	TargetURL   string
+	EventName   string
+	EventID     string
+	MinAttempts int
+}
+
 func (s *Store) InsertWebhookReplay(ctx context.Context, input WebhookReplayInput) (WebhookReplay, error) {
 	eventID := strings.TrimSpace(input.EventID)
 	eventName := strings.TrimSpace(input.EventName)
@@ -225,6 +232,50 @@ func (s *Store) CountWebhookReplays(ctx context.Context, filter WebhookReplayFil
 	return total, nil
 }
 
+func (s *Store) ListWebhookDeadLetters(ctx context.Context, filter WebhookDeadLetterFilter, limit, offset int) ([]WebhookReplay, error) {
+	if limit <= 0 {
+		limit = 50
+	}
+	if limit > 500 {
+		limit = 500
+	}
+	if offset < 0 {
+		offset = 0
+	}
+
+	query, args := buildWebhookDeadLetterQuery(filter, false)
+	query += ` ORDER BY updated_at DESC, id DESC LIMIT ? OFFSET ?`
+	args = append(args, limit, offset)
+
+	rows, err := s.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("list webhook dead letters: %w", err)
+	}
+	defer rows.Close()
+
+	deadLetters := make([]WebhookReplay, 0)
+	for rows.Next() {
+		item, scanErr := scanWebhookReplay(rows)
+		if scanErr != nil {
+			return nil, fmt.Errorf("scan webhook dead letter row: %w", scanErr)
+		}
+		deadLetters = append(deadLetters, item)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate webhook dead letter rows: %w", err)
+	}
+	return deadLetters, nil
+}
+
+func (s *Store) CountWebhookDeadLetters(ctx context.Context, filter WebhookDeadLetterFilter) (int, error) {
+	query, args := buildWebhookDeadLetterQuery(filter, true)
+	var total int
+	if err := s.db.QueryRowContext(ctx, query, args...).Scan(&total); err != nil {
+		return 0, fmt.Errorf("count webhook dead letters: %w", err)
+	}
+	return total, nil
+}
+
 func (s *Store) ListWebhookReplaysDue(ctx context.Context, now time.Time, limit int) ([]WebhookReplay, error) {
 	if limit <= 0 {
 		limit = 50
@@ -383,6 +434,59 @@ func buildWebhookReplayQuery(filter WebhookReplayFilter, countOnly bool) (string
 		query += ` AND status = ?`
 		args = append(args, normalizedStatus)
 	}
+
+	if trimmedTarget := strings.TrimSpace(filter.TargetURL); trimmedTarget != "" {
+		query += ` AND target_url = ?`
+		args = append(args, trimmedTarget)
+	}
+
+	if trimmedEvent := strings.TrimSpace(filter.EventName); trimmedEvent != "" {
+		query += ` AND event_name = ?`
+		args = append(args, trimmedEvent)
+	}
+
+	if trimmedEventID := strings.TrimSpace(filter.EventID); trimmedEventID != "" {
+		query += ` AND event_id = ?`
+		args = append(args, trimmedEventID)
+	}
+
+	return query, args
+}
+
+func buildWebhookDeadLetterQuery(filter WebhookDeadLetterFilter, countOnly bool) (string, []any) {
+	selectClause := `SELECT
+		id,
+		delivery_id,
+		event_id,
+		event_name,
+		target_url,
+		source,
+		payload,
+		headers,
+		status,
+		attempt_count,
+		last_error,
+		last_http_status,
+		last_attempt_at,
+		next_attempt_at,
+		created_at,
+		updated_at`
+	if countOnly {
+		selectClause = `SELECT COUNT(1)`
+	}
+
+	minAttempts := filter.MinAttempts
+	if minAttempts <= 0 {
+		minAttempts = 3
+	}
+
+	query := selectClause + `
+		 FROM webhook_replays
+		 WHERE status = ?
+		   AND next_attempt_at IS NULL
+		   AND attempt_count >= ?`
+	args := make([]any, 0, 6)
+	args = append(args, WebhookReplayStatusFailed, minAttempts)
 
 	if trimmedTarget := strings.TrimSpace(filter.TargetURL); trimmedTarget != "" {
 		query += ` AND target_url = ?`

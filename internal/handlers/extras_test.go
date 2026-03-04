@@ -496,6 +496,111 @@ func TestAPIUpdateChannelSecretActions(t *testing.T) {
 	}
 }
 
+func TestAPIRotateChannelCredentials(t *testing.T) {
+	t.Parallel()
+
+	app := newAPIApp(t)
+	created, err := app.Store.CreateChannel(context.Background(), db.ChannelInput{
+		Type:                model.ChannelTypeLinkedIn,
+		DisplayName:         "LinkedIn Main",
+		LinkedInAccessToken: ptrString("token-old"),
+		LinkedInAuthorURN:   ptrString("urn:li:organization:123"),
+	})
+	if err != nil {
+		t.Fatalf("create channel: %v", err)
+	}
+
+	path := "/api/v1/channels/" + strconv.FormatInt(created.ID, 10) + "/rotate-credentials"
+	payload := map[string]any{
+		"linkedin_access_token_action": "replace",
+		"linkedin_access_token":        "token-new",
+		"linkedin_author_urn":          "urn:li:organization:123",
+		"validate":                     false,
+	}
+
+	recorder := performJSONHandlerRequest(t, http.MethodPost, path, payload, app.APIRotateChannelCredentials)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d (%s)", recorder.Code, recorder.Body.String())
+	}
+
+	var response struct {
+		Message   string `json:"message"`
+		Validated bool   `json:"validated"`
+		Channel   struct {
+			ID int64 `json:"id"`
+		} `json:"channel"`
+	}
+	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
+		t.Fatalf("decode rotate response: %v", err)
+	}
+	if response.Message != "credentials rotated" {
+		t.Fatalf("expected credentials rotated message, got %q", response.Message)
+	}
+	if response.Validated {
+		t.Fatalf("expected validated=false when payload sets validate=false")
+	}
+	if response.Channel.ID != created.ID {
+		t.Fatalf("expected response channel id %d, got %d", created.ID, response.Channel.ID)
+	}
+
+	updated, err := app.Store.GetChannel(context.Background(), created.ID)
+	if err != nil {
+		t.Fatalf("reload channel: %v", err)
+	}
+	if strings.TrimSpace(derefString(updated.LinkedInAccessToken)) != "token-new" {
+		t.Fatalf("expected linkedin token to be rotated")
+	}
+
+	events, err := app.Store.ListChannelAuditEvents(context.Background(), created.ID, 20, 0)
+	if err != nil {
+		t.Fatalf("list channel audit events: %v", err)
+	}
+	foundRotateSource := false
+	for _, event := range events {
+		if event.EventType != "channel.updated" || event.Metadata == nil {
+			continue
+		}
+		var metadata map[string]any
+		if err := json.Unmarshal([]byte(*event.Metadata), &metadata); err != nil {
+			continue
+		}
+		source, _ := metadata["source"].(string)
+		if source == "api_rotate" {
+			foundRotateSource = true
+			break
+		}
+	}
+	if !foundRotateSource {
+		t.Fatalf("expected channel.updated audit metadata source=api_rotate")
+	}
+}
+
+func TestAPIRotateChannelCredentialsValidationError(t *testing.T) {
+	t.Parallel()
+
+	app := newAPIApp(t)
+	created, err := app.Store.CreateChannel(context.Background(), db.ChannelInput{
+		Type:                model.ChannelTypeLinkedIn,
+		DisplayName:         "LinkedIn Main",
+		LinkedInAccessToken: ptrString("token-old"),
+		LinkedInAuthorURN:   ptrString("urn:li:organization:123"),
+	})
+	if err != nil {
+		t.Fatalf("create channel: %v", err)
+	}
+
+	path := "/api/v1/channels/" + strconv.FormatInt(created.ID, 10) + "/rotate-credentials"
+	payload := map[string]any{
+		"linkedin_access_token_action": "replace",
+		"validate":                     false,
+	}
+
+	recorder := performJSONHandlerRequest(t, http.MethodPost, path, payload, app.APIRotateChannelCredentials)
+	if recorder.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d (%s)", recorder.Code, recorder.Body.String())
+	}
+}
+
 func ptrString(value string) *string {
 	copyValue := value
 	return &copyValue

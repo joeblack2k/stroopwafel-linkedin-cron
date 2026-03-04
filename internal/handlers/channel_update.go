@@ -109,6 +109,11 @@ type channelUpdatePayload struct {
 	InstagramAccessToken       *string `json:"instagram_access_token,omitempty"`
 }
 
+type channelRotateCredentialsPayload struct {
+	channelUpdatePayload
+	Validate *bool `json:"validate,omitempty"`
+}
+
 type channelAuditEventResponse struct {
 	ID        int64   `json:"id"`
 	ChannelID int64   `json:"channel_id"`
@@ -250,6 +255,61 @@ func (a *App) APIUpdateChannel(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, mapChannelResponse(updated))
+}
+
+func (a *App) APIRotateChannelCredentials(w http.ResponseWriter, r *http.Request) {
+	id, err := parseID(r.PathValue("id"))
+	if err != nil {
+		writeAPIError(w, http.StatusBadRequest, "invalid channel id")
+		return
+	}
+
+	var payload channelRotateCredentialsPayload
+	if err := readJSONBody(r, &payload); err != nil {
+		writeAPIError(w, http.StatusBadRequest, "invalid JSON payload")
+		return
+	}
+
+	input, err := parseChannelUpdatePayload(payload.channelUpdatePayload)
+	if err != nil {
+		writeAPIError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	input.AuditActor = a.channelAuditActor(r.Context())
+	input.AuditSource = "api_rotate"
+
+	updated, err := a.Store.UpdateChannel(r.Context(), id, input)
+	if err != nil {
+		if errors.Is(err, db.ErrNotFound) {
+			writeAPIError(w, http.StatusNotFound, "channel not found")
+			return
+		}
+		writeAPIError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	validated := true
+	if payload.Validate != nil {
+		validated = *payload.Validate
+	}
+	if validated {
+		tested, testErr := a.runChannelTest(r.Context(), id)
+		if testErr != nil {
+			if errors.Is(testErr, db.ErrNotFound) {
+				writeAPIError(w, http.StatusNotFound, "channel not found")
+				return
+			}
+			writeAPIError(w, http.StatusInternalServerError, "failed to validate rotated credentials")
+			return
+		}
+		updated = tested
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"message":   "credentials rotated",
+		"validated": validated,
+		"channel":   mapChannelResponse(updated),
+	})
 }
 
 func (a *App) APIListChannelAuditEvents(w http.ResponseWriter, r *http.Request) {

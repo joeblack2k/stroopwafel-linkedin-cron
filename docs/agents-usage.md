@@ -13,6 +13,7 @@ This runbook is for agents that operate the API while we close Postiz parity gap
 1. **Ensure channel exists**
    - `GET /api/v1/channels`
    - `POST /api/v1/channels`
+   - `POST /api/v1/channels/{id}/rotate-credentials`
 2. **Create scheduled post with channels**
    - `POST /api/v1/posts` with `status=scheduled`, `scheduled_at`, `channel_ids`
 3. **Operate delivery**
@@ -22,6 +23,8 @@ This runbook is for agents that operate the API while we close Postiz parity gap
 4. **Inspect and recover**
    - `GET /api/v1/settings/webhooks`
    - `GET /api/v1/webhooks/replays`
+   - `GET /api/v1/webhooks/dead-letters`
+   - `GET /api/v1/webhooks/dead-letters/alerts`
    - `POST /api/v1/webhooks/replays/{id}/replay`
    - `POST /api/v1/webhooks/replays/{id}/cancel`
    - `POST /api/v1/webhooks/replays/replay-failed`
