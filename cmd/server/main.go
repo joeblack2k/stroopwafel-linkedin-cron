@@ -220,6 +220,8 @@ func registerProtectedRoutes(mux *http.ServeMux, uiAuth func(http.Handler) http.
 	mux.Handle("PUT /api/v1/channels/{id}", apiMutating(app.APIUpdateChannel))
 	mux.Handle("GET /api/v1/channels/{id}/rules", apiAuth(http.HandlerFunc(app.APIGetChannelRules)))
 	mux.Handle("PUT /api/v1/channels/{id}/rules", apiMutating(app.APIUpdateChannelRules))
+	mux.Handle("GET /api/v1/channels/{id}/retry-policy", apiAuth(http.HandlerFunc(app.APIGetChannelRetryPolicy)))
+	mux.Handle("PUT /api/v1/channels/{id}/retry-policy", apiMutating(app.APIUpdateChannelRetryPolicy))
 	mux.Handle("GET /api/v1/channels/{id}/audit", apiAuth(http.HandlerFunc(app.APIListChannelAuditEvents)))
 	mux.Handle("DELETE /api/v1/channels/{id}", apiMutating(app.APIDeleteChannel))
 	mux.Handle("POST /api/v1/channels/{id}/test", apiMutating(app.APITestChannel))

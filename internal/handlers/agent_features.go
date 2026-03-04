@@ -47,6 +47,27 @@ type channelRuleResponse struct {
 	UpdatedAt      *string `json:"updated_at,omitempty"`
 }
 
+type channelRetryPolicyPayload struct {
+	MaxRetries              *int `json:"max_retries"`
+	BackoffFirstSeconds     *int `json:"backoff_first_seconds"`
+	BackoffSecondSeconds    *int `json:"backoff_second_seconds"`
+	BackoffThirdSeconds     *int `json:"backoff_third_seconds"`
+	RateLimitBackoffSeconds *int `json:"rate_limit_backoff_seconds"`
+	MaxPostsPerDay          *int `json:"max_posts_per_day,omitempty"`
+}
+
+type channelRetryPolicyResponse struct {
+	ChannelID               int64   `json:"channel_id"`
+	MaxRetries              int     `json:"max_retries"`
+	BackoffFirstSeconds     int     `json:"backoff_first_seconds"`
+	BackoffSecondSeconds    int     `json:"backoff_second_seconds"`
+	BackoffThirdSeconds     int     `json:"backoff_third_seconds"`
+	RateLimitBackoffSeconds int     `json:"rate_limit_backoff_seconds"`
+	MaxPostsPerDay          *int    `json:"max_posts_per_day,omitempty"`
+	Configured              bool    `json:"configured"`
+	UpdatedAt               *string `json:"updated_at,omitempty"`
+}
+
 type weeklySnapshotResponse struct {
 	Start             string         `json:"start"`
 	End               string         `json:"end"`
@@ -193,6 +214,77 @@ func (a *App) APIUpdateChannelRules(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, mapChannelRuleResponse(rule))
 }
 
+func (a *App) APIGetChannelRetryPolicy(w http.ResponseWriter, r *http.Request) {
+	id, err := parseID(r.PathValue("id"))
+	if err != nil {
+		writeAPIError(w, http.StatusBadRequest, "invalid channel id")
+		return
+	}
+
+	if _, err := a.Store.GetChannel(r.Context(), id); err != nil {
+		if errors.Is(err, db.ErrNotFound) {
+			writeAPIError(w, http.StatusNotFound, "channel not found")
+			return
+		}
+		writeAPIError(w, http.StatusInternalServerError, "failed to load channel")
+		return
+	}
+
+	policy, found, err := a.Store.GetChannelRetryPolicy(r.Context(), id)
+	if err != nil {
+		writeAPIError(w, http.StatusInternalServerError, "failed to load channel retry policy")
+		return
+	}
+	if !found {
+		policy = model.DefaultChannelRetryPolicy(id)
+	}
+
+	writeJSON(w, http.StatusOK, mapChannelRetryPolicyResponse(policy, found))
+}
+
+func (a *App) APIUpdateChannelRetryPolicy(w http.ResponseWriter, r *http.Request) {
+	id, err := parseID(r.PathValue("id"))
+	if err != nil {
+		writeAPIError(w, http.StatusBadRequest, "invalid channel id")
+		return
+	}
+
+	if _, err := a.Store.GetChannel(r.Context(), id); err != nil {
+		if errors.Is(err, db.ErrNotFound) {
+			writeAPIError(w, http.StatusNotFound, "channel not found")
+			return
+		}
+		writeAPIError(w, http.StatusInternalServerError, "failed to load channel")
+		return
+	}
+
+	var payload channelRetryPolicyPayload
+	if err := readJSONBody(r, &payload); err != nil {
+		writeAPIError(w, http.StatusBadRequest, "invalid JSON payload")
+		return
+	}
+
+	if payload.MaxRetries == nil || payload.BackoffFirstSeconds == nil || payload.BackoffSecondSeconds == nil || payload.BackoffThirdSeconds == nil || payload.RateLimitBackoffSeconds == nil {
+		writeAPIError(w, http.StatusBadRequest, "max_retries, backoff_first_seconds, backoff_second_seconds, backoff_third_seconds, and rate_limit_backoff_seconds are required")
+		return
+	}
+
+	policy, err := a.Store.UpsertChannelRetryPolicy(r.Context(), id, db.ChannelRetryPolicyInput{
+		MaxRetries:              *payload.MaxRetries,
+		BackoffFirstSeconds:     *payload.BackoffFirstSeconds,
+		BackoffSecondSeconds:    *payload.BackoffSecondSeconds,
+		BackoffThirdSeconds:     *payload.BackoffThirdSeconds,
+		RateLimitBackoffSeconds: *payload.RateLimitBackoffSeconds,
+		MaxPostsPerDay:          payload.MaxPostsPerDay,
+	})
+	if err != nil {
+		writeAPIError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	writeJSON(w, http.StatusOK, mapChannelRetryPolicyResponse(policy, true))
+}
+
 func (a *App) APIWeeklySnapshot(w http.ResponseWriter, r *http.Request) {
 	location := a.Config.Location
 	if location == nil {
@@ -301,6 +393,24 @@ func mapChannelRuleResponse(rule model.ChannelRule) channelRuleResponse {
 	}
 	if !rule.UpdatedAt.IsZero() {
 		formatted := rule.UpdatedAt.UTC().Format(time.RFC3339)
+		response.UpdatedAt = &formatted
+	}
+	return response
+}
+
+func mapChannelRetryPolicyResponse(policy model.ChannelRetryPolicy, configured bool) channelRetryPolicyResponse {
+	response := channelRetryPolicyResponse{
+		ChannelID:               policy.ChannelID,
+		MaxRetries:              policy.MaxRetries,
+		BackoffFirstSeconds:     policy.BackoffFirstSeconds,
+		BackoffSecondSeconds:    policy.BackoffSecondSeconds,
+		BackoffThirdSeconds:     policy.BackoffThirdSeconds,
+		RateLimitBackoffSeconds: policy.RateLimitBackoffSeconds,
+		MaxPostsPerDay:          policy.MaxPostsPerDay,
+		Configured:              configured,
+	}
+	if !policy.UpdatedAt.IsZero() {
+		formatted := policy.UpdatedAt.UTC().Format(time.RFC3339)
 		response.UpdatedAt = &formatted
 	}
 	return response
@@ -433,9 +543,6 @@ func (a *App) computeSchedulingWarnings(ctx context.Context, scheduledAt time.Ti
 	if err != nil {
 		return nil, err
 	}
-	if len(candidates) == 0 {
-		return nil, nil
-	}
 
 	selectedChannels := selectedChannelIDMap(dedupeChannelIDs(channelIDs))
 	duplicateIDs := make([]int64, 0)
@@ -490,6 +597,38 @@ func (a *App) computeSchedulingWarnings(ctx context.Context, scheduledAt time.Ti
 			Message:         fmt.Sprintf("Er zijn %d post(s) binnen %d minuten van dit tijdslot", len(tooCloseIDs), int(minScheduleSpacing.Minutes())),
 			ConflictPostIDs: tooCloseIDs,
 		})
+	}
+
+	if len(selectedChannels) > 0 {
+		dayStart := time.Date(scheduledAt.UTC().Year(), scheduledAt.UTC().Month(), scheduledAt.UTC().Day(), 0, 0, 0, 0, time.UTC)
+		dayEnd := dayStart.Add(24 * time.Hour)
+
+		channels, err := a.Store.ListChannelsByIDs(ctx, dedupeChannelIDs(channelIDs))
+		if err != nil {
+			return nil, err
+		}
+		policies, err := a.Store.ListChannelRetryPoliciesByChannelIDs(ctx, dedupeChannelIDs(channelIDs))
+		if err != nil {
+			return nil, err
+		}
+
+		for _, channel := range channels {
+			policy, exists := policies[channel.ID]
+			if !exists || !policy.HasDailyLimit() {
+				continue
+			}
+
+			plannedCount, countErr := a.Store.CountPlannedPostsForChannelBetween(ctx, channel.ID, dayStart, dayEnd, excludePostID)
+			if countErr != nil {
+				return nil, countErr
+			}
+			if plannedCount >= *policy.MaxPostsPerDay {
+				warnings = append(warnings, scheduleWarning{
+					Code:    "channel_daily_limit",
+					Message: fmt.Sprintf("%s heeft al %d post(s) op deze dag (limiet %d)", channel.DisplayName, plannedCount, *policy.MaxPostsPerDay),
+				})
+			}
+		}
 	}
 
 	return warnings, nil

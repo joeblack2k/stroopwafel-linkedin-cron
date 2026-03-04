@@ -184,6 +184,19 @@ func (s *Service) attemptChannelPublish(ctx context.Context, post model.Post, ch
 		attemptNo = latest.AttemptNo + 1
 	}
 
+	retryPolicy, policyErr := s.loadChannelRetryPolicy(ctx, channel.ID)
+	if policyErr != nil {
+		return fmt.Errorf("load channel retry policy for channel=%d: %w", channel.ID, policyErr)
+	}
+
+	blockedByDailyLimit, dailyLimitErr := s.enforceChannelDailyLimit(ctx, post, channel, attemptNo, now, retryPolicy)
+	if dailyLimitErr != nil {
+		return dailyLimitErr
+	}
+	if blockedByDailyLimit {
+		return fmt.Errorf("channel daily limit reached for channel=%d", channel.ID)
+	}
+
 	rule, hasRule, ruleErr := s.store.GetChannelRule(ctx, channel.ID)
 	if ruleErr != nil {
 		return fmt.Errorf("load channel rule for channel=%d: %w", channel.ID, ruleErr)
@@ -277,7 +290,7 @@ func (s *Service) attemptChannelPublish(ctx context.Context, post model.Post, ch
 	nextRetry := (*time.Time)(nil)
 	errorCategory := publisher.ErrorCategory(err)
 	if publisher.IsRetryable(err) {
-		candidate, keepRetry := scheduleRetry(now, attemptNo)
+		candidate, keepRetry := scheduleRetryWithPolicy(now, attemptNo, errorCategory, retryPolicy)
 		if keepRetry {
 			status = model.PublishAttemptStatusRetry
 			nextRetry = candidate
@@ -526,6 +539,79 @@ func shouldAttemptChannel(force bool, post model.Post, latest model.PublishAttem
 	return !post.ScheduledAt.After(now)
 }
 
+func (s *Service) loadChannelRetryPolicy(ctx context.Context, channelID int64) (model.ChannelRetryPolicy, error) {
+	policy, err := s.store.GetEffectiveChannelRetryPolicy(ctx, channelID)
+	if err != nil {
+		return model.ChannelRetryPolicy{}, err
+	}
+	return policy, nil
+}
+
+func (s *Service) enforceChannelDailyLimit(ctx context.Context, post model.Post, channel model.Channel, attemptNo int, now time.Time, policy model.ChannelRetryPolicy) (bool, error) {
+	if !policy.HasDailyLimit() {
+		return false, nil
+	}
+
+	dayStart := time.Date(now.UTC().Year(), now.UTC().Month(), now.UTC().Day(), 0, 0, 0, 0, time.UTC)
+	dayEnd := dayStart.Add(24 * time.Hour)
+
+	sentCount, err := s.store.CountSentPublishAttemptsForChannelBetween(ctx, channel.ID, dayStart, dayEnd)
+	if err != nil {
+		return false, fmt.Errorf("count sent attempts for channel=%d: %w", channel.ID, err)
+	}
+	if sentCount < *policy.MaxPostsPerDay {
+		return false, nil
+	}
+
+	nextRetry := dayEnd
+	errText := fmt.Sprintf("channel daily limit reached for %s: max_posts_per_day=%d", channel.DisplayName, *policy.MaxPostsPerDay)
+	errorCategory := publisher.ErrorCategoryValidation
+	attemptRecord, insertErr := s.store.InsertPublishAttempt(ctx, db.PublishAttemptInput{
+		PostID:        post.ID,
+		ChannelID:     channel.ID,
+		AttemptNo:     attemptNo,
+		AttemptedAt:   now,
+		Status:        model.PublishAttemptStatusRetry,
+		Error:         &errText,
+		ErrorCategory: &errorCategory,
+		RetryAt:       &nextRetry,
+	})
+	if insertErr != nil {
+		return false, fmt.Errorf("insert daily-limit publish attempt for post=%d channel=%d: %w", post.ID, channel.ID, insertErr)
+	}
+
+	s.emitLifecycleEvent(ctx, "publish.attempt.created", map[string]any{
+		"post_id":                  post.ID,
+		"channel_id":               channel.ID,
+		"channel_type":             string(channel.Type),
+		"channel_name":             channel.DisplayName,
+		"attempt_id":               attemptRecord.ID,
+		"attempt_no":               attemptRecord.AttemptNo,
+		"status":                   attemptRecord.Status,
+		"error":                    errText,
+		"error_category":           errorCategory,
+		"next_retry_at":            nextRetry.UTC().Format(time.RFC3339),
+		"policy_max_posts_per_day": *policy.MaxPostsPerDay,
+	})
+
+	s.logger.LogAttrs(
+		ctx,
+		slog.LevelWarn,
+		"channel publish deferred by daily limit",
+		slog.String("component", "scheduler"),
+		slog.Int64("post_id", post.ID),
+		slog.Int64("channel_id", channel.ID),
+		slog.String("channel_type", string(channel.Type)),
+		slog.String("channel_name", channel.DisplayName),
+		slog.Int("attempt_no", attemptNo),
+		slog.Int("sent_today", sentCount),
+		slog.Int("max_posts_per_day", *policy.MaxPostsPerDay),
+		slog.String("next_retry_at", nextRetry.UTC().Format(time.RFC3339)),
+	)
+
+	return true, nil
+}
+
 func validatePostAgainstRule(text string, channel model.Channel, rule model.ChannelRule) error {
 	trimmedText := strings.TrimSpace(text)
 	if rule.MaxTextLength != nil {
@@ -572,6 +658,31 @@ func scheduleRetry(now time.Time, failCount int) (*time.Time, bool) {
 		return nil, false
 	}
 	next := now.UTC().Add(retryBackoff[index])
+	return &next, true
+}
+
+func scheduleRetryWithPolicy(now time.Time, attemptNo int, errorCategory string, policy model.ChannelRetryPolicy) (*time.Time, bool) {
+	if attemptNo <= 0 {
+		return nil, false
+	}
+	if attemptNo > policy.MaxRetries {
+		return nil, false
+	}
+
+	if strings.EqualFold(strings.TrimSpace(errorCategory), publisher.ErrorCategoryRateLimited) {
+		next := now.UTC().Add(time.Duration(policy.RateLimitBackoffSeconds) * time.Second)
+		return &next, true
+	}
+
+	backoffs := []int{policy.BackoffFirstSeconds, policy.BackoffSecondSeconds, policy.BackoffThirdSeconds}
+	index := attemptNo - 1
+	if index >= len(backoffs) {
+		index = len(backoffs) - 1
+	}
+	if backoffs[index] <= 0 {
+		return nil, false
+	}
+	next := now.UTC().Add(time.Duration(backoffs[index]) * time.Second)
 	return &next, true
 }
 

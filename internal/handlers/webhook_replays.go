@@ -40,7 +40,10 @@ type webhookReplayListResponse struct {
 }
 
 type webhookReplayBulkPayload struct {
-	Limit int `json:"limit"`
+	Limit     int    `json:"limit"`
+	TargetURL string `json:"target_url,omitempty"`
+	EventName string `json:"event_name,omitempty"`
+	EventID   string `json:"event_id,omitempty"`
 }
 
 type WebhookReplayPageData struct {
@@ -175,7 +178,14 @@ func (a *App) APIReplayFailedWebhooks(w http.ResponseWriter, r *http.Request) {
 		payload.Limit = 200
 	}
 
-	replays, err := a.Store.ListWebhookReplays(r.Context(), db.WebhookReplayFilter{Status: db.WebhookReplayStatusFailed}, payload.Limit, 0)
+	filter := db.WebhookReplayFilter{
+		Status:    db.WebhookReplayStatusFailed,
+		TargetURL: strings.TrimSpace(payload.TargetURL),
+		EventName: strings.TrimSpace(payload.EventName),
+		EventID:   strings.TrimSpace(payload.EventID),
+	}
+
+	replays, err := a.Store.ListWebhookReplays(r.Context(), filter, payload.Limit, 0)
 	if err != nil {
 		writeAPIError(w, http.StatusInternalServerError, "failed to list failed webhook replays")
 		return

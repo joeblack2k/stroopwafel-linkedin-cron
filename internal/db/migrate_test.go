@@ -85,6 +85,12 @@ func TestMigrateBootstrapsSchema(t *testing.T) {
 	if tableCount != 1 {
 		t.Fatalf("expected audit_events table to exist, got count=%d", tableCount)
 	}
+	if err := database.QueryRow(`SELECT COUNT(1) FROM sqlite_master WHERE type='table' AND name='channel_retry_policies'`).Scan(&tableCount); err != nil {
+		t.Fatalf("query channel_retry_policies table: %v", err)
+	}
+	if tableCount != 1 {
+		t.Fatalf("expected channel_retry_policies table to exist, got count=%d", tableCount)
+	}
 
 	var columnCount int
 	if err := database.QueryRow(`SELECT COUNT(1) FROM pragma_table_info('posts') WHERE name='next_retry_at'`).Scan(&columnCount); err != nil {

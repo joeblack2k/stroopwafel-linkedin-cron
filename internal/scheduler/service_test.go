@@ -511,3 +511,258 @@ func TestRunDueNotifierCanForwardToWebhookEndpoint(t *testing.T) {
 		t.Fatalf("expected forwarded webhook payloads")
 	}
 }
+
+func TestChannelRetryPolicyControlsBackoffAndMaxRetries(t *testing.T) {
+	t.Parallel()
+
+	store, _ := newTestStore(t)
+	now := time.Date(2026, 3, 5, 12, 0, 0, 0, time.UTC)
+
+	post := mustCreatePost(t, store, model.StatusScheduled, ptrTime(now.Add(-2*time.Minute)))
+	channel := mustCreateChannel(t, store, "Policy Channel")
+	if err := store.ReplacePostChannels(context.Background(), post.ID, []int64{channel.ID}); err != nil {
+		t.Fatalf("replace post channels: %v", err)
+	}
+	_, err := store.UpsertChannelRetryPolicy(context.Background(), channel.ID, db.ChannelRetryPolicyInput{
+		MaxRetries:              2,
+		BackoffFirstSeconds:     120,
+		BackoffSecondSeconds:    600,
+		BackoffThirdSeconds:     1200,
+		RateLimitBackoffSeconds: 1800,
+	})
+	if err != nil {
+		t.Fatalf("upsert retry policy: %v", err)
+	}
+
+	retryErr := &publisher.PublishError{Err: errors.New("temporary upstream error"), Retryable: true, Category: publisher.ErrorCategoryUpstream}
+	pub := &sequenceStubPublisher{results: []error{retryErr, retryErr, retryErr}}
+
+	service := NewService(store, publisher.NewDryRunPublisher(testLogger()), testLogger())
+	service.SetNow(func() time.Time { return now })
+	service.SetChannelPublisherResolver(func(ch model.Channel) publisher.Publisher {
+		if ch.ID == channel.ID {
+			return pub
+		}
+		return nil
+	})
+
+	if err := service.SendNow(context.Background(), post.ID); err == nil {
+		t.Fatal("expected first send-now attempt to fail")
+	}
+
+	latest, found, err := store.GetLatestPublishAttempt(context.Background(), post.ID, channel.ID)
+	if err != nil {
+		t.Fatalf("latest attempt after first send-now: %v", err)
+	}
+	if !found {
+		t.Fatal("expected first attempt to exist")
+	}
+	if latest.Status != model.PublishAttemptStatusRetry {
+		t.Fatalf("expected retry status on first attempt, got %s", latest.Status)
+	}
+	if latest.RetryAt == nil {
+		t.Fatal("expected retry_at on first attempt")
+	}
+	if !latest.RetryAt.Equal(now.Add(120 * time.Second)) {
+		t.Fatalf("expected first retry_at=%s, got %s", now.Add(120*time.Second).Format(time.RFC3339), latest.RetryAt.Format(time.RFC3339))
+	}
+
+	secondNow := now.Add(2 * time.Minute)
+	service.SetNow(func() time.Time { return secondNow })
+	if err := service.SendNow(context.Background(), post.ID); err == nil {
+		t.Fatal("expected second send-now attempt to fail")
+	}
+
+	latest, found, err = store.GetLatestPublishAttempt(context.Background(), post.ID, channel.ID)
+	if err != nil {
+		t.Fatalf("latest attempt after second send-now: %v", err)
+	}
+	if !found {
+		t.Fatal("expected second attempt to exist")
+	}
+	if latest.AttemptNo != 2 {
+		t.Fatalf("expected attempt_no=2, got %d", latest.AttemptNo)
+	}
+	if latest.Status != model.PublishAttemptStatusRetry {
+		t.Fatalf("expected retry status on second attempt, got %s", latest.Status)
+	}
+	if latest.RetryAt == nil {
+		t.Fatal("expected retry_at on second attempt")
+	}
+	if !latest.RetryAt.Equal(secondNow.Add(600 * time.Second)) {
+		t.Fatalf("expected second retry_at=%s, got %s", secondNow.Add(600*time.Second).Format(time.RFC3339), latest.RetryAt.Format(time.RFC3339))
+	}
+
+	thirdNow := secondNow.Add(10 * time.Minute)
+	service.SetNow(func() time.Time { return thirdNow })
+	if err := service.SendNow(context.Background(), post.ID); err == nil {
+		t.Fatal("expected third send-now attempt to fail")
+	}
+
+	latest, found, err = store.GetLatestPublishAttempt(context.Background(), post.ID, channel.ID)
+	if err != nil {
+		t.Fatalf("latest attempt after third send-now: %v", err)
+	}
+	if !found {
+		t.Fatal("expected third attempt to exist")
+	}
+	if latest.AttemptNo != 3 {
+		t.Fatalf("expected attempt_no=3, got %d", latest.AttemptNo)
+	}
+	if latest.Status != model.PublishAttemptStatusFailed {
+		t.Fatalf("expected failed status after retries exhausted, got %s", latest.Status)
+	}
+	if latest.RetryAt != nil {
+		t.Fatalf("expected retry_at=nil after retries exhausted, got %v", latest.RetryAt)
+	}
+}
+
+func TestChannelRetryPolicyRateLimitedUsesDedicatedBackoff(t *testing.T) {
+	t.Parallel()
+
+	store, _ := newTestStore(t)
+	now := time.Date(2026, 3, 5, 14, 0, 0, 0, time.UTC)
+
+	post := mustCreatePost(t, store, model.StatusScheduled, ptrTime(now.Add(-2*time.Minute)))
+	channel := mustCreateChannel(t, store, "Rate Limited Channel")
+	if err := store.ReplacePostChannels(context.Background(), post.ID, []int64{channel.ID}); err != nil {
+		t.Fatalf("replace post channels: %v", err)
+	}
+	_, err := store.UpsertChannelRetryPolicy(context.Background(), channel.ID, db.ChannelRetryPolicyInput{
+		MaxRetries:              3,
+		BackoffFirstSeconds:     60,
+		BackoffSecondSeconds:    300,
+		BackoffThirdSeconds:     900,
+		RateLimitBackoffSeconds: 2700,
+	})
+	if err != nil {
+		t.Fatalf("upsert retry policy: %v", err)
+	}
+
+	rateLimitedErr := &publisher.PublishError{Err: errors.New("rate limit hit"), Retryable: true, Category: publisher.ErrorCategoryRateLimited}
+	pub := &sequenceStubPublisher{results: []error{rateLimitedErr}}
+
+	service := NewService(store, publisher.NewDryRunPublisher(testLogger()), testLogger())
+	service.SetNow(func() time.Time { return now })
+	service.SetChannelPublisherResolver(func(ch model.Channel) publisher.Publisher {
+		if ch.ID == channel.ID {
+			return pub
+		}
+		return nil
+	})
+
+	if err := service.SendNow(context.Background(), post.ID); err == nil {
+		t.Fatal("expected rate-limited send-now attempt to fail")
+	}
+
+	latest, found, err := store.GetLatestPublishAttempt(context.Background(), post.ID, channel.ID)
+	if err != nil {
+		t.Fatalf("latest attempt after rate limit: %v", err)
+	}
+	if !found {
+		t.Fatal("expected rate-limited attempt to exist")
+	}
+	if latest.Status != model.PublishAttemptStatusRetry {
+		t.Fatalf("expected retry status, got %s", latest.Status)
+	}
+	if latest.RetryAt == nil {
+		t.Fatal("expected retry_at for rate-limited attempt")
+	}
+	if !latest.RetryAt.Equal(now.Add(2700 * time.Second)) {
+		t.Fatalf("expected retry_at=%s, got %s", now.Add(2700*time.Second).Format(time.RFC3339), latest.RetryAt.Format(time.RFC3339))
+	}
+}
+
+func TestChannelRetryPolicyDailyLimitDefersUntilNextDay(t *testing.T) {
+	t.Parallel()
+
+	store, _ := newTestStore(t)
+	now := time.Date(2026, 3, 5, 15, 10, 0, 0, time.UTC)
+
+	channel := mustCreateChannel(t, store, "Daily Limit Channel")
+	_, err := store.UpsertChannelRetryPolicy(context.Background(), channel.ID, db.ChannelRetryPolicyInput{
+		MaxRetries:              3,
+		BackoffFirstSeconds:     60,
+		BackoffSecondSeconds:    300,
+		BackoffThirdSeconds:     900,
+		RateLimitBackoffSeconds: 1800,
+		MaxPostsPerDay:          ptrIntScheduler(1),
+	})
+	if err != nil {
+		t.Fatalf("upsert retry policy: %v", err)
+	}
+
+	alreadySentPost := mustCreatePost(t, store, model.StatusSent, ptrTime(now.Add(-2*time.Hour)))
+	if err := store.ReplacePostChannels(context.Background(), alreadySentPost.ID, []int64{channel.ID}); err != nil {
+		t.Fatalf("replace channels for already-sent post: %v", err)
+	}
+	if _, err := store.InsertPublishAttempt(context.Background(), db.PublishAttemptInput{
+		PostID:      alreadySentPost.ID,
+		ChannelID:   channel.ID,
+		AttemptNo:   1,
+		AttemptedAt: now.Add(-90 * time.Minute),
+		Status:      model.PublishAttemptStatusSent,
+	}); err != nil {
+		t.Fatalf("insert baseline sent attempt: %v", err)
+	}
+
+	duePost := mustCreatePost(t, store, model.StatusScheduled, ptrTime(now.Add(-3*time.Minute)))
+	if err := store.ReplacePostChannels(context.Background(), duePost.ID, []int64{channel.ID}); err != nil {
+		t.Fatalf("replace channels for due post: %v", err)
+	}
+
+	pub := &stubPublisher{}
+	service := NewService(store, publisher.NewDryRunPublisher(testLogger()), testLogger())
+	service.SetNow(func() time.Time { return now })
+	service.SetChannelPublisherResolver(func(ch model.Channel) publisher.Publisher {
+		if ch.ID == channel.ID {
+			return pub
+		}
+		return nil
+	})
+
+	processed, err := service.RunDue(context.Background())
+	if err != nil {
+		t.Fatalf("run due: %v", err)
+	}
+	if processed != 1 {
+		t.Fatalf("expected one processed post, got %d", processed)
+	}
+	if len(pub.ids) != 0 {
+		t.Fatalf("expected no publisher calls due to daily limit, got %d", len(pub.ids))
+	}
+
+	latest, found, err := store.GetLatestPublishAttempt(context.Background(), duePost.ID, channel.ID)
+	if err != nil {
+		t.Fatalf("get latest attempt after daily limit: %v", err)
+	}
+	if !found {
+		t.Fatal("expected daily-limit attempt")
+	}
+	if latest.Status != model.PublishAttemptStatusRetry {
+		t.Fatalf("expected retry status for daily-limit attempt, got %s", latest.Status)
+	}
+	if latest.RetryAt == nil {
+		t.Fatal("expected retry_at for daily-limit attempt")
+	}
+	nextDay := time.Date(now.UTC().Year(), now.UTC().Month(), now.UTC().Day(), 0, 0, 0, 0, time.UTC).Add(24 * time.Hour)
+	if !latest.RetryAt.Equal(nextDay) {
+		t.Fatalf("expected retry_at at next UTC day %s, got %s", nextDay.Format(time.RFC3339), latest.RetryAt.Format(time.RFC3339))
+	}
+
+	updatedPost, err := store.GetPost(context.Background(), duePost.ID)
+	if err != nil {
+		t.Fatalf("get due post after daily limit: %v", err)
+	}
+	if updatedPost.Status != model.StatusScheduled {
+		t.Fatalf("expected due post to remain scheduled, got %s", updatedPost.Status)
+	}
+	if updatedPost.NextRetryAt == nil || !updatedPost.NextRetryAt.Equal(nextDay) {
+		t.Fatalf("expected due post next_retry_at=%s, got %+v", nextDay.Format(time.RFC3339), updatedPost.NextRetryAt)
+	}
+}
+
+func ptrIntScheduler(value int) *int {
+	copyValue := value
+	return &copyValue
+}

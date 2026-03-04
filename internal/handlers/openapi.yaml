@@ -299,6 +299,41 @@ paths:
       responses:
         '204':
           description: Deleted
+  /api/v1/channels/{id}/retry-policy:
+    get:
+      summary: Get channel retry policy
+      parameters:
+        - $ref: '#/components/parameters/ChannelID'
+      responses:
+        '200':
+          description: Channel retry policy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChannelRetryPolicy'
+        '404':
+          $ref: '#/components/responses/APIError'
+    put:
+      summary: Update channel retry policy
+      parameters:
+        - $ref: '#/components/parameters/ChannelID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChannelRetryPolicyRequest'
+      responses:
+        '200':
+          description: Updated channel retry policy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChannelRetryPolicy'
+        '400':
+          $ref: '#/components/responses/APIError'
+        '404':
+          $ref: '#/components/responses/APIError'
   /api/v1/settings/status:
     get:
       summary: Runtime settings status
@@ -392,6 +427,9 @@ paths:
               type: object
               properties:
                 limit: { type: integer, minimum: 1, maximum: 200, default: 20 }
+                target_url: { type: string, format: uri }
+                event_name: { type: string }
+                event_id: { type: string }
       responses:
         '200':
           description: Bulk replay result
