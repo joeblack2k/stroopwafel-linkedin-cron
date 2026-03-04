@@ -307,5 +307,7 @@ Imports LinkedIn integration and queued LinkedIn posts into this app.
 - `docs/agents-usage.md`
 - `docs/phase1-backlog.md`
 - `docs/build-brief-fleurtje.md`
+- `docs/phase3-roadmap.md`
+- `docs/phase3-launch.md`
 - `docs/openapi.yaml`
 - `docs/error-catalog.json`
