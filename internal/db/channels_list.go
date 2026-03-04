@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"linkedin-cron/internal/model"
+	"stroopwafel/internal/model"
 )
 
 type ChannelListFilter struct {

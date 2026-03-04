@@ -1,4 +1,4 @@
-# stroopwafel-linkedin-cron
+# stroopwafel-social-media-manager
 
 Lightweight Go monolith to draft, schedule, and publish social posts (LinkedIn + Facebook Pages + Instagram Business) with:
 
@@ -33,7 +33,7 @@ This project is designed so all user state is under **`/data`** in the container
 Persistent files:
 
 - `/data/config.json` → runtime configuration (auth/settings/publisher defaults)
-- `/data/linkedin-cron.db` (+ `-wal`, `-shm`) → posts/channels/api keys/history
+- `/data/stroopwafel.db` (+ `-wal`, `-shm`) → posts/channels/api keys/history
 
 This means you can delete/update/recreate containers safely as long as your `/data` mount remains.
 
@@ -54,7 +54,7 @@ Use a host bind mount such as:
 ```yaml
 services:
   stroopwafel:
-    image: ghcr.io/joeblack2k/stroopwafel-linkedin-cron:latest
+    image: ghcr.io/joeblack2k/stroopwafel-social-media-manager:latest
     container_name: stroopwafel
     restart: unless-stopped
     ports:
@@ -103,7 +103,7 @@ Main settings live in `/data/config.json`. Example:
   "timezone": "UTC",
   "publisher_mode": "dry-run",
   "static_api_keys": {
-    "lcak_example_token": "bot-main"
+    "swak_example_token": "bot-main"
   },
   "linkedin_access_token": "",
   "linkedin_author_urn": "",
@@ -235,6 +235,11 @@ API keys are stored hashed in SQLite.
 - `GET /api/v1/posts/{id}`
 - `POST /api/v1/posts`
 - `POST /api/v1/media/upload`
+- `GET /api/v1/media/assets`
+- `GET /api/v1/media/assets/{id}`
+- `POST /api/v1/media/assets`
+- `PUT /api/v1/media/assets/{id}`
+- `DELETE /api/v1/media/assets/{id}`
 - `POST /api/v1/posts/guardrails`
 - `PUT /api/v1/posts/{id}`
 - `DELETE /api/v1/posts/{id}`
@@ -256,6 +261,12 @@ API keys are stored hashed in SQLite.
 - `GET /api/v1/meta/error-codes`
 - `GET /api/v1/analytics/overview`
 - `GET /api/v1/analytics/weekly-snapshot`
+- `GET /api/v1/analytics/channels`
+- `GET /api/v1/templates`
+- `GET /api/v1/templates/{id}`
+- `POST /api/v1/templates`
+- `PUT /api/v1/templates/{id}`
+- `DELETE /api/v1/templates/{id}`
 - `POST /api/v1/settings/bot-handoff`
 - `GET /api/v1/channels`
 - `POST /api/v1/channels`

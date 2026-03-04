@@ -53,17 +53,17 @@ func TestFacebookConfigured(t *testing.T) {
 func TestParseStaticAPIKeys(t *testing.T) {
 	t.Parallel()
 
-	parsed := parseStaticAPIKeys("bot-main:lcak_a, lcak_b ; bot-c=lcak_c")
+	parsed := parseStaticAPIKeys("bot-main:swak_a, swak_b ; bot-c=swak_c")
 	if len(parsed) != 3 {
 		t.Fatalf("expected 3 keys, got %d", len(parsed))
 	}
-	if got := parsed["lcak_a"]; got != "bot-main" {
-		t.Fatalf("expected bot-main for lcak_a, got %q", got)
+	if got := parsed["swak_a"]; got != "bot-main" {
+		t.Fatalf("expected bot-main for swak_a, got %q", got)
 	}
-	if got := parsed["lcak_c"]; got != "bot-c" {
-		t.Fatalf("expected bot-c for lcak_c, got %q", got)
+	if got := parsed["swak_c"]; got != "bot-c" {
+		t.Fatalf("expected bot-c for swak_c, got %q", got)
 	}
-	if got := parsed["lcak_b"]; got != "env-key-1" {
+	if got := parsed["swak_b"]; got != "env-key-1" {
 		t.Fatalf("expected generated name env-key-1, got %q", got)
 	}
 }
@@ -71,7 +71,7 @@ func TestParseStaticAPIKeys(t *testing.T) {
 func TestLoadCreatesConfigFileFromEnv(t *testing.T) {
 	dataDir := t.TempDir()
 	configPath := filepath.Join(dataDir, "config.json")
-	dbPath := filepath.Join(dataDir, "linkedin-cron.db")
+	dbPath := filepath.Join(dataDir, "stroopwafel.db")
 
 	t.Setenv("APP_DATA_DIR", dataDir)
 	t.Setenv("APP_CONFIG_PATH", configPath)
@@ -79,7 +79,7 @@ func TestLoadCreatesConfigFileFromEnv(t *testing.T) {
 	t.Setenv("APP_BASIC_AUTH_USER", "alice")
 	t.Setenv("APP_BASIC_AUTH_PASS", "secret")
 	t.Setenv("APP_TIMEZONE", "UTC")
-	t.Setenv("APP_STATIC_API_KEYS", "bot:lcak_123")
+	t.Setenv("APP_STATIC_API_KEYS", "bot:swak_123")
 	t.Setenv("PUBLISHER_MODE", "dry-run")
 
 	cfg, err := Load()
@@ -92,7 +92,7 @@ func TestLoadCreatesConfigFileFromEnv(t *testing.T) {
 	if cfg.BasicAuthPass != "secret" {
 		t.Fatalf("expected basic auth pass secret, got %q", cfg.BasicAuthPass)
 	}
-	if got := cfg.StaticAPIKeys["lcak_123"]; got != "bot" {
+	if got := cfg.StaticAPIKeys["swak_123"]; got != "bot" {
 		t.Fatalf("expected static api key bot, got %q", got)
 	}
 
@@ -104,7 +104,7 @@ func TestLoadCreatesConfigFileFromEnv(t *testing.T) {
 func TestLoadReadsPersistedConfig(t *testing.T) {
 	dataDir := t.TempDir()
 	configPath := filepath.Join(dataDir, "config.json")
-	dbPath := filepath.Join(dataDir, "linkedin-cron.db")
+	dbPath := filepath.Join(dataDir, "stroopwafel.db")
 
 	persisted := `{
   "version": 1,
@@ -113,7 +113,7 @@ func TestLoadReadsPersistedConfig(t *testing.T) {
   "timezone": "UTC",
   "publisher_mode": "facebook-page",
   "static_api_keys": {
-    "lcak_token": "bot-stored"
+    "swak_token": "bot-stored"
   },
   "facebook_page_access_token": "fb-token",
   "facebook_page_id": "12345"
@@ -145,7 +145,7 @@ func TestLoadReadsPersistedConfig(t *testing.T) {
 	if cfg.PublisherMode != "facebook-page" {
 		t.Fatalf("expected publisher mode facebook-page, got %q", cfg.PublisherMode)
 	}
-	if got := cfg.StaticAPIKeys["lcak_token"]; got != "bot-stored" {
+	if got := cfg.StaticAPIKeys["swak_token"]; got != "bot-stored" {
 		t.Fatalf("expected static key name bot-stored, got %q", got)
 	}
 	if !cfg.FacebookConfigured() {

@@ -4,18 +4,18 @@ SHELL := /bin/bash
 
 build:
 	@mkdir -p bin
-	go build -o bin/linkedin-cron-server ./cmd/server
-	go build -o bin/linkedin-cron-scheduler ./cmd/scheduler
+	go build -o bin/stroopwafel-server ./cmd/server
+	go build -o bin/stroopwafel-scheduler ./cmd/scheduler
 
 run:
 	@set -a; [ -f .env ] && source .env; set +a; \
-	DB_PATH="$${APP_DB_PATH:-./data/linkedin-cron.db}"; \
+	DB_PATH="$${APP_DB_PATH:-./data/stroopwafel.db}"; \
 	mkdir -p "$$(dirname "$$DB_PATH")"; \
 	go run ./cmd/server
 
 run-scheduler:
 	@set -a; [ -f .env ] && source .env; set +a; \
-	DB_PATH="$${APP_DB_PATH:-./data/linkedin-cron.db}"; \
+	DB_PATH="$${APP_DB_PATH:-./data/stroopwafel.db}"; \
 	mkdir -p "$$(dirname "$$DB_PATH")"; \
 	go run ./cmd/scheduler
 
@@ -36,7 +36,7 @@ clean:
 	rm -rf bin
 
 docker-build:
-	docker build -t ghcr.io/joeblack2k/stroopwafel-linkedin-cron:local .
+	docker build -t ghcr.io/joeblack2k/stroopwafel-social-media-manager:local .
 
 docker-up:
 	docker compose up -d

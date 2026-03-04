@@ -5,7 +5,7 @@ import (
 	"errors"
 	"strings"
 
-	"linkedin-cron/internal/model"
+	"stroopwafel/internal/model"
 )
 
 const (

@@ -1,5 +1,5 @@
 [Unit]
-Description=LinkedIn Cron HTTP Server
+Description=Stroopwafel: Social Media Manager HTTP Server
 After=network-online.target
 Wants=network-online.target
 
@@ -7,9 +7,9 @@ Wants=network-online.target
 Type=simple
 User=www-data
 Group=www-data
-WorkingDirectory=/opt/linkedin-cron
-EnvironmentFile=/etc/linkedin-cron.env
-ExecStart=/usr/local/bin/linkedin-cron-server
+WorkingDirectory=/opt/stroopwafel
+EnvironmentFile=/etc/stroopwafel.env
+ExecStart=/usr/local/bin/stroopwafel-server
 Restart=always
 RestartSec=5
 StandardOutput=journal

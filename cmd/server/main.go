@@ -13,17 +13,17 @@ import (
 	"syscall"
 	"time"
 
-	"linkedin-cron/internal/config"
-	"linkedin-cron/internal/db"
-	"linkedin-cron/internal/facebook"
-	"linkedin-cron/internal/handlers"
-	"linkedin-cron/internal/instagram"
-	"linkedin-cron/internal/linkedin"
-	"linkedin-cron/internal/model"
-	"linkedin-cron/internal/publisher"
-	"linkedin-cron/internal/scheduler"
-	"linkedin-cron/internal/views"
-	"linkedin-cron/internal/webhooks"
+	"stroopwafel/internal/config"
+	"stroopwafel/internal/db"
+	"stroopwafel/internal/facebook"
+	"stroopwafel/internal/handlers"
+	"stroopwafel/internal/instagram"
+	"stroopwafel/internal/linkedin"
+	"stroopwafel/internal/model"
+	"stroopwafel/internal/publisher"
+	"stroopwafel/internal/scheduler"
+	"stroopwafel/internal/views"
+	"stroopwafel/internal/webhooks"
 )
 
 func main() {
@@ -213,7 +213,18 @@ func registerProtectedRoutes(mux *http.ServeMux, uiAuth func(http.Handler) http.
 	mux.Handle("GET /api/v1/meta/error-codes", apiAuth(http.HandlerFunc(app.APIErrorCatalog)))
 	mux.Handle("GET /api/v1/analytics/overview", apiAuth(http.HandlerFunc(app.APIAnalyticsOverview)))
 	mux.Handle("GET /api/v1/analytics/weekly-snapshot", apiAuth(http.HandlerFunc(app.APIWeeklySnapshot)))
+	mux.Handle("GET /api/v1/analytics/channels", apiAuth(http.HandlerFunc(app.APIAnalyticsChannelDelivery)))
 	mux.Handle("POST /api/v1/settings/bot-handoff", apiMutating(app.APICreateBotHandoff))
+	mux.Handle("GET /api/v1/media/assets", apiAuth(http.HandlerFunc(app.APIListMediaAssets)))
+	mux.Handle("GET /api/v1/media/assets/{id}", apiAuth(http.HandlerFunc(app.APIGetMediaAsset)))
+	mux.Handle("POST /api/v1/media/assets", apiMutating(app.APICreateMediaAsset))
+	mux.Handle("PUT /api/v1/media/assets/{id}", apiMutating(app.APIUpdateMediaAsset))
+	mux.Handle("DELETE /api/v1/media/assets/{id}", apiMutating(app.APIDeleteMediaAsset))
+	mux.Handle("GET /api/v1/templates", apiAuth(http.HandlerFunc(app.APIListContentTemplates)))
+	mux.Handle("GET /api/v1/templates/{id}", apiAuth(http.HandlerFunc(app.APIGetContentTemplate)))
+	mux.Handle("POST /api/v1/templates", apiMutating(app.APICreateContentTemplate))
+	mux.Handle("PUT /api/v1/templates/{id}", apiMutating(app.APIUpdateContentTemplate))
+	mux.Handle("DELETE /api/v1/templates/{id}", apiMutating(app.APIDeleteContentTemplate))
 	mux.Handle("GET /api/v1/channels", apiAuth(http.HandlerFunc(app.APIListChannels)))
 	mux.Handle("GET /api/v1/channels/health", apiAuth(http.HandlerFunc(app.APIListChannelHealth)))
 	mux.Handle("POST /api/v1/channels", apiMutating(app.APICreateChannel))
@@ -393,7 +404,7 @@ func requestLogger(logger *slog.Logger, next http.Handler) http.Handler {
 
 		authMethod := handlers.AuthMethodForLog(r.Context())
 		if authMethod == "unknown" {
-			authMethod = strings.TrimSpace(r.Header.Get("X-LC-Auth-Method"))
+			authMethod = strings.TrimSpace(r.Header.Get("X-SW-Auth-Method"))
 			if authMethod == "" {
 				authMethod = "unknown"
 			}
@@ -401,7 +412,7 @@ func requestLogger(logger *slog.Logger, next http.Handler) http.Handler {
 
 		apiKeyID := handlers.APIKeyIDForLog(r.Context())
 		if apiKeyID == 0 {
-			rawAPIKeyID := strings.TrimSpace(r.Header.Get("X-LC-API-Key-ID"))
+			rawAPIKeyID := strings.TrimSpace(r.Header.Get("X-SW-API-Key-ID"))
 			if rawAPIKeyID != "" {
 				if parsed, err := strconv.ParseInt(rawAPIKeyID, 10, 64); err == nil {
 					apiKeyID = parsed
@@ -411,7 +422,7 @@ func requestLogger(logger *slog.Logger, next http.Handler) http.Handler {
 
 		apiKeyName := handlers.APIKeyNameForLog(r.Context())
 		if strings.TrimSpace(apiKeyName) == "" {
-			apiKeyName = strings.TrimSpace(r.Header.Get("X-LC-API-Key-Name"))
+			apiKeyName = strings.TrimSpace(r.Header.Get("X-SW-API-Key-Name"))
 		}
 
 		logger.LogAttrs(

@@ -14,11 +14,11 @@ import (
 	"testing"
 	"time"
 
-	"linkedin-cron/internal/config"
-	"linkedin-cron/internal/db"
-	"linkedin-cron/internal/model"
-	"linkedin-cron/internal/publisher"
-	"linkedin-cron/internal/scheduler"
+	"stroopwafel/internal/config"
+	"stroopwafel/internal/db"
+	"stroopwafel/internal/model"
+	"stroopwafel/internal/publisher"
+	"stroopwafel/internal/scheduler"
 )
 
 func TestAPICreatePostValidation(t *testing.T) {

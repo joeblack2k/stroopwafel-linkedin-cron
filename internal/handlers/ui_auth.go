@@ -16,7 +16,7 @@ import (
 	"strings"
 	"time"
 
-	"linkedin-cron/internal/config"
+	"stroopwafel/internal/config"
 )
 
 const (
@@ -138,7 +138,7 @@ func parseAndValidateUISessionToken(token, expectedUser, expectedPass string, no
 }
 
 func signUISessionPayload(payload, username, password string) string {
-	mac := hmac.New(sha256.New, []byte("linkedin-cron-session|"+username+"|"+password))
+	mac := hmac.New(sha256.New, []byte("stroopwafel-session|"+username+"|"+password))
 	_, _ = mac.Write([]byte(payload))
 	return hex.EncodeToString(mac.Sum(nil))
 }

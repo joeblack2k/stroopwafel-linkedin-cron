@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"linkedin-cron/internal/config"
+	"stroopwafel/internal/config"
 )
 
 func TestUISessionTokenRoundTrip(t *testing.T) {

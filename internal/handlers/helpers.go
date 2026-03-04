@@ -13,11 +13,11 @@ import (
 	"time"
 	"unicode"
 
-	"linkedin-cron/internal/config"
-	"linkedin-cron/internal/db"
-	"linkedin-cron/internal/model"
-	"linkedin-cron/internal/scheduler"
-	"linkedin-cron/internal/views"
+	"stroopwafel/internal/config"
+	"stroopwafel/internal/db"
+	"stroopwafel/internal/model"
+	"stroopwafel/internal/scheduler"
+	"stroopwafel/internal/views"
 )
 
 type App struct {
@@ -43,9 +43,9 @@ const (
 )
 
 const (
-	requestAuthMethodHeader = "X-LC-Auth-Method"
-	requestAPIKeyIDHeader   = "X-LC-API-Key-ID"
-	requestAPIKeyNameHeader = "X-LC-API-Key-Name"
+	requestAuthMethodHeader = "X-SW-Auth-Method"
+	requestAPIKeyIDHeader   = "X-SW-API-Key-ID"
+	requestAPIKeyNameHeader = "X-SW-API-Key-Name"
 )
 
 type SettingsStatus struct {
@@ -91,7 +91,7 @@ func BasicAuthMiddleware(username, password string, logger *slog.Logger) func(ht
 					slog.String("component", "http"),
 					slog.String("path", r.URL.Path),
 				)
-				w.Header().Set("WWW-Authenticate", `Basic realm="linkedin-cron"`)
+				w.Header().Set("WWW-Authenticate", `Basic realm="stroopwafel"`)
 				http.Error(w, "unauthorized", http.StatusUnauthorized)
 				return
 			}
@@ -149,7 +149,7 @@ func APIAuthMiddleware(username, password string, store *db.Store, staticAPIKeys
 				}
 			}
 
-			w.Header().Set("WWW-Authenticate", `Basic realm="linkedin-cron"`)
+			w.Header().Set("WWW-Authenticate", `Basic realm="stroopwafel"`)
 			writeAPIError(w, http.StatusUnauthorized, "unauthorized")
 		})
 	}

@@ -12,8 +12,8 @@ import (
 	"strings"
 	"time"
 
-	"linkedin-cron/internal/model"
-	"linkedin-cron/internal/publisher"
+	"stroopwafel/internal/model"
+	"stroopwafel/internal/publisher"
 )
 
 type Publisher struct {

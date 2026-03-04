@@ -15,7 +15,7 @@ Mount it as `/data` in the container.
 ```yaml
 services:
   stroopwafel:
-    image: ghcr.io/joeblack2k/stroopwafel-linkedin-cron:latest
+    image: ghcr.io/joeblack2k/stroopwafel-social-media-manager:latest
     container_name: stroopwafel
     restart: unless-stopped
     ports:
@@ -27,9 +27,9 @@ services:
 ## What is persisted in `/data`
 
 - `/data/config.json`
-- `/data/linkedin-cron.db`
-- `/data/linkedin-cron.db-wal`
-- `/data/linkedin-cron.db-shm`
+- `/data/stroopwafel.db`
+- `/data/stroopwafel.db-wal`
+- `/data/stroopwafel.db-shm`
 
 This includes channel credentials (in DB), API keys (hashed in DB), scheduler state, and app settings.
 

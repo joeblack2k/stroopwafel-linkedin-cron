@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"linkedin-cron/internal/db"
-	"linkedin-cron/internal/model"
+	"stroopwafel/internal/db"
+	"stroopwafel/internal/model"
 )
 
 func TestAPIListAuditEventsSupportsFiltersAndPagination(t *testing.T) {

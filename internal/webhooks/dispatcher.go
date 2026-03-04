@@ -188,7 +188,7 @@ func clonePayload(payload map[string]any) map[string]any {
 func defaultSource(source string) string {
 	trimmed := strings.TrimSpace(source)
 	if trimmed == "" {
-		return "stroopwafel-linkedin-cron"
+		return "stroopwafel-social-media-manager"
 	}
 	return trimmed
 }

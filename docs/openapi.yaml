@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: Stroopwafel Social API
-  version: 1.1.0
+  version: 1.2.0
   description: API-first social scheduling and publishing API for agents.
 servers:
   - url: http://localhost:8080
@@ -334,6 +334,202 @@ paths:
           $ref: '#/components/responses/APIError'
         '404':
           $ref: '#/components/responses/APIError'
+  /api/v1/media/assets:
+    get:
+      summary: List media assets
+      parameters:
+        - in: query
+          name: limit
+          schema: { type: integer, minimum: 1, maximum: 500, default: 50 }
+        - in: query
+          name: offset
+          schema: { type: integer, minimum: 0, default: 0 }
+        - in: query
+          name: q
+          schema: { type: string }
+        - in: query
+          name: tag
+          schema: { type: string }
+        - in: query
+          name: media_type
+          schema: { type: string, enum: [link, image, video] }
+      responses:
+        '200':
+          description: Paginated media assets list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MediaAssetsListResponse'
+    post:
+      summary: Create media asset metadata
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MediaAssetRequest'
+      responses:
+        '201':
+          description: Created media asset
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MediaAsset'
+        '400':
+          $ref: '#/components/responses/APIError'
+  /api/v1/media/assets/{id}:
+    get:
+      summary: Get media asset
+      parameters:
+        - $ref: '#/components/parameters/MediaAssetID'
+      responses:
+        '200':
+          description: Media asset
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MediaAsset'
+        '404':
+          $ref: '#/components/responses/APIError'
+    put:
+      summary: Update media asset metadata
+      parameters:
+        - $ref: '#/components/parameters/MediaAssetID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MediaAssetRequest'
+      responses:
+        '200':
+          description: Updated media asset
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MediaAsset'
+        '400':
+          $ref: '#/components/responses/APIError'
+        '404':
+          $ref: '#/components/responses/APIError'
+    delete:
+      summary: Delete media asset
+      parameters:
+        - $ref: '#/components/parameters/MediaAssetID'
+      responses:
+        '200':
+          description: Deletion result
+  /api/v1/templates:
+    get:
+      summary: List content templates
+      parameters:
+        - in: query
+          name: limit
+          schema: { type: integer, minimum: 1, maximum: 500, default: 50 }
+        - in: query
+          name: offset
+          schema: { type: integer, minimum: 0, default: 0 }
+        - in: query
+          name: q
+          schema: { type: string }
+        - in: query
+          name: tag
+          schema: { type: string }
+        - in: query
+          name: channel_type
+          schema: { type: string, enum: [linkedin, facebook-page, instagram, dry-run] }
+        - in: query
+          name: is_active
+          schema: { type: boolean }
+      responses:
+        '200':
+          description: Paginated templates list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ContentTemplatesListResponse'
+    post:
+      summary: Create content template
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ContentTemplateRequest'
+      responses:
+        '201':
+          description: Created content template
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ContentTemplate'
+        '400':
+          $ref: '#/components/responses/APIError'
+  /api/v1/templates/{id}:
+    get:
+      summary: Get content template
+      parameters:
+        - $ref: '#/components/parameters/TemplateID'
+      responses:
+        '200':
+          description: Content template
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ContentTemplate'
+        '404':
+          $ref: '#/components/responses/APIError'
+    put:
+      summary: Update content template
+      parameters:
+        - $ref: '#/components/parameters/TemplateID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ContentTemplateRequest'
+      responses:
+        '200':
+          description: Updated content template
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ContentTemplate'
+        '400':
+          $ref: '#/components/responses/APIError'
+        '404':
+          $ref: '#/components/responses/APIError'
+    delete:
+      summary: Delete content template
+      parameters:
+        - $ref: '#/components/parameters/TemplateID'
+      responses:
+        '200':
+          description: Deletion result
+  /api/v1/analytics/channels:
+    get:
+      summary: Channel delivery analytics by date range
+      parameters:
+        - in: query
+          name: from
+          schema: { type: string, format: date-time }
+        - in: query
+          name: to
+          schema: { type: string, format: date-time }
+        - in: query
+          name: limit
+          schema: { type: integer, minimum: 1, maximum: 500, default: 50 }
+        - in: query
+          name: offset
+          schema: { type: integer, minimum: 0, default: 0 }
+      responses:
+        '200':
+          description: Paginated channel delivery analytics
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChannelDeliveryStatsResponse'
   /api/v1/settings/status:
     get:
       summary: Runtime settings status
@@ -518,6 +714,16 @@ components:
       required: true
       name: id
       schema: { type: integer }
+    MediaAssetID:
+      in: path
+      required: true
+      name: id
+      schema: { type: integer }
+    TemplateID:
+      in: path
+      required: true
+      name: id
+      schema: { type: integer }
   responses:
     APIError:
       description: API error response
@@ -637,6 +843,114 @@ components:
         instagram_access_token: { type: string, nullable: true }
         instagram_business_account_id: { type: string, nullable: true }
         instagram_api_base_url: { type: string, format: uri, nullable: true }
+    MediaAsset:
+      type: object
+      required: [id, media_url, media_type, size_bytes, source, created_at, updated_at]
+      properties:
+        id: { type: integer }
+        media_url: { type: string, format: uri }
+        media_type: { type: string, enum: [link, image, video] }
+        filename: { type: string, nullable: true }
+        size_bytes: { type: integer }
+        stored_path: { type: string, nullable: true }
+        source: { type: string }
+        tags:
+          type: array
+          items: { type: string }
+        metadata:
+          type: object
+          additionalProperties: { type: string }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+    MediaAssetRequest:
+      type: object
+      required: [media_url, media_type]
+      properties:
+        media_url: { type: string, format: uri }
+        media_type: { type: string, enum: [link, image, video] }
+        filename: { type: string, nullable: true }
+        size_bytes: { type: integer }
+        stored_path: { type: string, nullable: true }
+        source: { type: string }
+        tags:
+          type: array
+          items: { type: string }
+        metadata:
+          type: object
+          additionalProperties: { type: string }
+    MediaAssetsListResponse:
+      type: object
+      required: [items, pagination]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/MediaAsset'
+        pagination:
+          $ref: '#/components/schemas/Pagination'
+    ContentTemplate:
+      type: object
+      required: [id, name, body, is_active, created_at, updated_at]
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        description: { type: string, nullable: true }
+        body: { type: string }
+        channel_type: { type: string, enum: [linkedin, facebook-page, instagram, dry-run], nullable: true }
+        media_asset_id: { type: integer, nullable: true }
+        tags:
+          type: array
+          items: { type: string }
+        is_active: { type: boolean }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+    ContentTemplateRequest:
+      type: object
+      required: [name, body]
+      properties:
+        name: { type: string }
+        description: { type: string, nullable: true }
+        body: { type: string }
+        channel_type: { type: string, enum: [linkedin, facebook-page, instagram, dry-run], nullable: true }
+        media_asset_id: { type: integer, nullable: true }
+        tags:
+          type: array
+          items: { type: string }
+        is_active: { type: boolean }
+    ContentTemplatesListResponse:
+      type: object
+      required: [items, pagination]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/ContentTemplate'
+        pagination:
+          $ref: '#/components/schemas/Pagination'
+    ChannelDeliveryStat:
+      type: object
+      required: [channel_id, channel_type, display_name, sent_count, failed_count, retry_count, total_count, success_rate]
+      properties:
+        channel_id: { type: integer }
+        channel_type: { type: string }
+        display_name: { type: string }
+        sent_count: { type: integer }
+        failed_count: { type: integer }
+        retry_count: { type: integer }
+        total_count: { type: integer }
+        success_rate: { type: number }
+    ChannelDeliveryStatsResponse:
+      type: object
+      required: [items, pagination]
+      properties:
+        range_from: { type: string, format: date-time, nullable: true }
+        range_to: { type: string, format: date-time, nullable: true }
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/ChannelDeliveryStat'
+        pagination:
+          $ref: '#/components/schemas/Pagination'
     WebhookDeliverySummary:
       type: object
       required: [total, delivered, failed, success_rate_pct]

@@ -15,9 +15,9 @@ import (
 	"testing"
 	"time"
 
-	"linkedin-cron/internal/db"
-	"linkedin-cron/internal/model"
-	"linkedin-cron/internal/publisher"
+	"stroopwafel/internal/db"
+	"stroopwafel/internal/model"
+	"stroopwafel/internal/publisher"
 )
 
 type stubPublisher struct {

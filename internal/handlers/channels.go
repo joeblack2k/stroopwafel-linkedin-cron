@@ -10,12 +10,12 @@ import (
 	"strings"
 	"time"
 
-	"linkedin-cron/internal/config"
-	"linkedin-cron/internal/db"
-	"linkedin-cron/internal/facebook"
-	"linkedin-cron/internal/instagram"
-	"linkedin-cron/internal/linkedin"
-	"linkedin-cron/internal/model"
+	"stroopwafel/internal/config"
+	"stroopwafel/internal/db"
+	"stroopwafel/internal/facebook"
+	"stroopwafel/internal/instagram"
+	"stroopwafel/internal/linkedin"
+	"stroopwafel/internal/model"
 )
 
 type ChannelFormInput struct {

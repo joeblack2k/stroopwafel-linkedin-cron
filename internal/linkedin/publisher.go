@@ -12,8 +12,8 @@ import (
 	"strings"
 	"time"
 
-	"linkedin-cron/internal/model"
-	"linkedin-cron/internal/publisher"
+	"stroopwafel/internal/model"
+	"stroopwafel/internal/publisher"
 )
 
 type Publisher struct {
@@ -106,7 +106,7 @@ func (p *Publisher) Publish(ctx context.Context, post model.Post) (publisher.Pub
 			{
 				"status":      "READY",
 				"originalUrl": strings.TrimSpace(*post.MediaURL),
-				"description": map[string]any{"text": "Shared from linkedin-cron"},
+				"description": map[string]any{"text": "Shared from Stroopwafel: Social Media Manager"},
 				"title":       map[string]any{"text": "External link"},
 			},
 		}

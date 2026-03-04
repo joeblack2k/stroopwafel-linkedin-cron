@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"linkedin-cron/internal/model"
+	"stroopwafel/internal/model"
 )
 
 func (s *Store) ListScheduledPostsInWindow(ctx context.Context, start, end time.Time, excludePostID int64) ([]model.Post, error) {

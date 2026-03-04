@@ -12,8 +12,8 @@ import (
 	"testing"
 	"time"
 
-	"linkedin-cron/internal/db"
-	"linkedin-cron/internal/model"
+	"stroopwafel/internal/db"
+	"stroopwafel/internal/model"
 )
 
 func TestAPIBulkSetPostChannelsRejectsClearingScheduledPosts(t *testing.T) {
@@ -576,8 +576,8 @@ func TestAPICreateBotHandoff(t *testing.T) {
 		t.Fatalf("decode payload: %v", err)
 	}
 	apiKey, _ := payload["api_key"].(string)
-	if !strings.HasPrefix(apiKey, "lcak_") {
-		t.Fatalf("expected api key prefix lcak_, got %q", apiKey)
+	if !strings.HasPrefix(apiKey, "swak_") {
+		t.Fatalf("expected api key prefix swak_, got %q", apiKey)
 	}
 	instructions, _ := payload["instructions"].(string)
 	if !strings.Contains(instructions, "/api/v1/posts") {

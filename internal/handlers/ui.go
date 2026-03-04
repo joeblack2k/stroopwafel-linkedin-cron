@@ -11,8 +11,8 @@ import (
 	"strings"
 	"time"
 
-	"linkedin-cron/internal/db"
-	"linkedin-cron/internal/model"
+	"stroopwafel/internal/db"
+	"stroopwafel/internal/model"
 )
 
 type CalendarDay struct {
@@ -1778,7 +1778,7 @@ func (a *App) buildBotHandoff(apiKey string) string {
 	baseURL = strings.TrimRight(baseURL, "/")
 
 	var builder strings.Builder
-	builder.WriteString("You are connected to linkedin-cron. Use this API key exactly as shown.\\n\\n")
+	builder.WriteString("You are connected to Stroopwafel: Social Media Manager. Use this API key exactly as shown.\\n\\n")
 	builder.WriteString("Base URL: ")
 	builder.WriteString(baseURL)
 	builder.WriteString("\\n")

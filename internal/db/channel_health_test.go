@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"linkedin-cron/internal/model"
+	"stroopwafel/internal/model"
 )
 
 func TestListChannelHealthSummaries(t *testing.T) {

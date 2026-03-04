@@ -10,7 +10,7 @@ import (
 	"strconv"
 	"strings"
 
-	"linkedin-cron/internal/db"
+	"stroopwafel/internal/db"
 )
 
 const (

@@ -1,11 +1,11 @@
 [Unit]
-Description=Run LinkedIn Cron scheduler every minute
+Description=Run Stroopwafel scheduler every minute
 
 [Timer]
 OnCalendar=*-*-* *:*:00
 AccuracySec=1s
 Persistent=true
-Unit=linkedin-cron-scheduler.service
+Unit=stroopwafel-scheduler.service
 
 [Install]
 WantedBy=timers.target

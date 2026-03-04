@@ -7,7 +7,7 @@ mkdir -p /data
 
 scheduler_loop() {
   while true; do
-    /usr/local/bin/linkedin-cron-scheduler || true
+    /usr/local/bin/stroopwafel-scheduler || true
     sleep "${SCHEDULER_INTERVAL_SECONDS}"
   done
 }
@@ -15,7 +15,7 @@ scheduler_loop() {
 scheduler_loop &
 SCHEDULER_PID=$!
 
-/usr/local/bin/linkedin-cron-server &
+/usr/local/bin/stroopwafel-server &
 SERVER_PID=$!
 
 cleanup() {

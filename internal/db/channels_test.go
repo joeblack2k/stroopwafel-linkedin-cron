@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"linkedin-cron/internal/model"
+	"stroopwafel/internal/model"
 )
 
 func TestChannelCRUDAndPostLinks(t *testing.T) {

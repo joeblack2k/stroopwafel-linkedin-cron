@@ -7,15 +7,15 @@ import (
 	"os"
 	"strings"
 
-	"linkedin-cron/internal/config"
-	"linkedin-cron/internal/db"
-	"linkedin-cron/internal/facebook"
-	"linkedin-cron/internal/instagram"
-	"linkedin-cron/internal/linkedin"
-	"linkedin-cron/internal/model"
-	"linkedin-cron/internal/publisher"
-	"linkedin-cron/internal/scheduler"
-	"linkedin-cron/internal/webhooks"
+	"stroopwafel/internal/config"
+	"stroopwafel/internal/db"
+	"stroopwafel/internal/facebook"
+	"stroopwafel/internal/instagram"
+	"stroopwafel/internal/linkedin"
+	"stroopwafel/internal/model"
+	"stroopwafel/internal/publisher"
+	"stroopwafel/internal/scheduler"
+	"stroopwafel/internal/webhooks"
 )
 
 func main() {

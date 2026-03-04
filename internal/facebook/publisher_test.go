@@ -9,8 +9,8 @@ import (
 	"strings"
 	"testing"
 
-	"linkedin-cron/internal/model"
-	"linkedin-cron/internal/publisher"
+	"stroopwafel/internal/model"
+	"stroopwafel/internal/publisher"
 )
 
 func TestPublishSuccess(t *testing.T) {

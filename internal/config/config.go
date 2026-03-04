@@ -54,7 +54,7 @@ const persistedConfigVersion = 1
 func Load() (Config, error) {
 	dataDir := getEnv("APP_DATA_DIR", "./data")
 	configPath := getEnv("APP_CONFIG_PATH", filepath.Join(dataDir, "config.json"))
-	dbPath := getEnv("APP_DB_PATH", filepath.Join(dataDir, "linkedin-cron.db"))
+	dbPath := getEnv("APP_DB_PATH", filepath.Join(dataDir, "stroopwafel.db"))
 
 	if err := os.MkdirAll(dataDir, 0o755); err != nil {
 		return Config{}, fmt.Errorf("create data dir %q: %w", dataDir, err)

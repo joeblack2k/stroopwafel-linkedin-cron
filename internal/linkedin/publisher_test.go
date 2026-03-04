@@ -8,7 +8,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"linkedin-cron/internal/publisher"
+	"stroopwafel/internal/publisher"
 )
 
 func TestProbeSuccess(t *testing.T) {

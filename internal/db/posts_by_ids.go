@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"linkedin-cron/internal/model"
+	"stroopwafel/internal/model"
 )
 
 func (s *Store) ListPostsByIDs(ctx context.Context, ids []int64) ([]model.Post, error) {

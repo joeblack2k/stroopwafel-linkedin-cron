@@ -77,7 +77,7 @@ fi
 
 auth=("-u" "${APP_BASIC_AUTH_USER}:${APP_BASIC_AUTH_PASS}")
 
-echo "[import] ensuring LinkedIn channel exists in linkedin-cron"
+echo "[import] ensuring LinkedIn channel exists in Stroopwafel: Social Media Manager"
 channels_json="$(curl -fsS "${auth[@]}" "${APP_URL}/api/v1/channels")"
 channel_id="$(jq -r --arg name "${CHANNEL_DISPLAY_NAME}" '.[] | select(.type=="linkedin" and .display_name==$name) | .id' <<<"${channels_json}" | head -n1)"
 

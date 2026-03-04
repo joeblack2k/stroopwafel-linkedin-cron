@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"linkedin-cron/internal/model"
+	"stroopwafel/internal/model"
 )
 
 type PostListFilter struct {

@@ -1,6 +1,6 @@
 services:
   stroopwafel:
-    image: ghcr.io/joeblack2k/stroopwafel-linkedin-cron:latest
+    image: ghcr.io/joeblack2k/stroopwafel-social-media-manager:latest
     container_name: stroopwafel
     restart: unless-stopped
     ports:

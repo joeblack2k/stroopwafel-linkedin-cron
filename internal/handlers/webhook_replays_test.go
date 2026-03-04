@@ -8,7 +8,7 @@ import (
 	"strconv"
 	"testing"
 
-	"linkedin-cron/internal/db"
+	"stroopwafel/internal/db"
 )
 
 func TestAPIListWebhookReplays(t *testing.T) {

@@ -11,8 +11,8 @@ import (
 	"strings"
 	"time"
 
-	"linkedin-cron/internal/db"
-	"linkedin-cron/internal/webhooks"
+	"stroopwafel/internal/db"
+	"stroopwafel/internal/webhooks"
 )
 
 var webhookReplayBackoff = []time.Duration{time.Minute, 5 * time.Minute, 15 * time.Minute}

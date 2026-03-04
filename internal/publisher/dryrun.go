@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 
-	"linkedin-cron/internal/model"
+	"stroopwafel/internal/model"
 )
 
 type DryRunPublisher struct {

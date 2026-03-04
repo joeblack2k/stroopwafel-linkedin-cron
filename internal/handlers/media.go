@@ -12,6 +12,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"stroopwafel/internal/db"
 )
 
 const (
@@ -19,6 +21,7 @@ const (
 )
 
 type mediaUploadResponse struct {
+	AssetID    int64  `json:"asset_id"`
 	MediaURL   string `json:"media_url"`
 	MediaType  string `json:"media_type"`
 	Filename   string `json:"filename"`
@@ -119,7 +122,26 @@ func (a *App) handleMediaUpload(w http.ResponseWriter, r *http.Request) {
 		mediaURL = strings.TrimRight(baseURL, "/") + mediaPath
 	}
 
+	asset, assetErr := a.Store.UpsertMediaAssetByURL(r.Context(), db.MediaAssetInput{
+		MediaURL:   mediaURL,
+		MediaType:  mediaTypeFromContentType(detectedType),
+		Filename:   &header.Filename,
+		SizeBytes:  written,
+		StoredPath: &mediaPath,
+		Source:     "upload",
+		Metadata: map[string]string{
+			"content_type":      detectedType,
+			"original_filename": strings.TrimSpace(header.Filename),
+		},
+	})
+	if assetErr != nil {
+		_ = os.Remove(storedPath)
+		writeAPIError(w, http.StatusInternalServerError, "failed to register media asset")
+		return
+	}
+
 	writeJSON(w, http.StatusCreated, mediaUploadResponse{
+		AssetID:    asset.ID,
 		MediaURL:   mediaURL,
 		MediaType:  mediaTypeFromContentType(detectedType),
 		Filename:   header.Filename,

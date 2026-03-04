@@ -13,7 +13,7 @@ import (
 	"strings"
 	"time"
 
-	"linkedin-cron/internal/model"
+	"stroopwafel/internal/model"
 
 	_ "modernc.org/sqlite"
 )
@@ -52,7 +52,7 @@ type AnalyticsChannelBreakdown struct {
 	RetryCount  int
 }
 
-const apiKeyTokenPrefix = "lcak_"
+const apiKeyTokenPrefix = "swak_"
 
 func EnsureDBDir(path string) error {
 	dir := filepath.Dir(path)

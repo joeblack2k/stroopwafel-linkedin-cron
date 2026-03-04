@@ -9,8 +9,8 @@ import (
 	"strings"
 	"testing"
 
-	"linkedin-cron/internal/db"
-	"linkedin-cron/internal/model"
+	"stroopwafel/internal/db"
+	"stroopwafel/internal/model"
 )
 
 func TestBulkSetPostChannelsRequiresConfirmation(t *testing.T) {

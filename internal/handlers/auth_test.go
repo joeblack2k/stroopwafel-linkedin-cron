@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"linkedin-cron/internal/db"
+	"stroopwafel/internal/db"
 )
 
 func TestAPIAuthMiddlewareWithAPIKey(t *testing.T) {
@@ -70,7 +70,7 @@ func TestAPIAuthMiddlewareWithEnvAPIKeyBearer(t *testing.T) {
 
 	store := setupAuthStore(t)
 	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
-	middleware := APIAuthMiddleware("admin", "admin", store, map[string]string{"lcak_env": "bot-public"}, logger)
+	middleware := APIAuthMiddleware("admin", "admin", store, map[string]string{"swak_env": "bot-public"}, logger)
 
 	handler := middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if AuthMethodForLog(r.Context()) != "api-key-env" {
@@ -83,7 +83,7 @@ func TestAPIAuthMiddlewareWithEnvAPIKeyBearer(t *testing.T) {
 	}))
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/posts", nil)
-	req.Header.Set("Authorization", "Bearer lcak_env")
+	req.Header.Set("Authorization", "Bearer swak_env")
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
 

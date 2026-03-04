@@ -8,9 +8,9 @@ import (
 	"strings"
 	"time"
 
-	"linkedin-cron/internal/db"
-	"linkedin-cron/internal/model"
-	"linkedin-cron/internal/publisher"
+	"stroopwafel/internal/db"
+	"stroopwafel/internal/model"
+	"stroopwafel/internal/publisher"
 )
 
 var retryBackoff = []time.Duration{time.Minute, 5 * time.Minute, 15 * time.Minute}

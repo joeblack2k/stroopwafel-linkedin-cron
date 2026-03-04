@@ -1,4 +1,4 @@
-module linkedin-cron
+module stroopwafel
 
 go 1.24.4
 

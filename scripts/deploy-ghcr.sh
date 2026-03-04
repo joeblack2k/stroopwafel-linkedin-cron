@@ -36,7 +36,7 @@ fi
 echo "[ghcr] logging in as ${GHCR_USERNAME}"
 printf '%s' "${GHCR_TOKEN}" | docker login ghcr.io -u "${GHCR_USERNAME}" --password-stdin >/dev/null
 
-echo "[ghcr] pulling ghcr.io/joeblack2k/stroopwafel-linkedin-cron:${IMAGE_TAG}"
+echo "[ghcr] pulling ghcr.io/joeblack2k/stroopwafel-social-media-manager:${IMAGE_TAG}"
 IMAGE_TAG="${IMAGE_TAG}" docker compose "${COMPOSE_ARGS[@]}" pull
 
 echo "[ghcr] deploying containers"

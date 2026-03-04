@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"linkedin-cron/internal/model"
+	"stroopwafel/internal/model"
 )
 
 func TestChannelRulesUpsertAndClear(t *testing.T) {

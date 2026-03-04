@@ -12,8 +12,8 @@ import (
 	"strings"
 	"time"
 
-	"linkedin-cron/internal/db"
-	"linkedin-cron/internal/model"
+	"stroopwafel/internal/db"
+	"stroopwafel/internal/model"
 )
 
 type ChannelUpdateFormInput struct {
