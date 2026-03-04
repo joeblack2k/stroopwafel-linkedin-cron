@@ -151,6 +151,40 @@ paths:
                 $ref: '#/components/schemas/PostMutationResponse'
         '400':
           $ref: '#/components/responses/APIError'
+  /api/v1/publish-attempts:
+    get:
+      summary: List publish attempts across posts
+      parameters:
+        - in: query
+          name: post_id
+          schema: { type: integer }
+        - in: query
+          name: channel_id
+          schema: { type: integer }
+        - in: query
+          name: status
+          schema: { type: string, enum: [sent, retry, failed] }
+        - in: query
+          name: attempted_from
+          schema: { type: string, format: date-time }
+        - in: query
+          name: attempted_to
+          schema: { type: string, format: date-time }
+        - in: query
+          name: limit
+          schema: { type: integer, minimum: 1, maximum: 500, default: 200 }
+        - in: query
+          name: offset
+          schema: { type: integer, minimum: 0, default: 0 }
+      responses:
+        '200':
+          description: Paginated publish attempts list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PublishAttemptsListResponse'
+        '400':
+          $ref: '#/components/responses/APIError'
   /api/v1/channels:
     get:
       summary: List channels
@@ -194,6 +228,52 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Channel'
+  /api/v1/channels/health:
+    get:
+      summary: List per-channel health summary
+      responses:
+        '200':
+          description: Channel health list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChannelHealthListResponse'
+  /api/v1/channels/bulk/disable:
+    post:
+      summary: Bulk disable channels
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BulkChannelStatusRequest'
+      responses:
+        '200':
+          description: Bulk disable result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BulkChannelStatusResponse'
+        '400':
+          $ref: '#/components/responses/APIError'
+  /api/v1/channels/bulk/enable:
+    post:
+      summary: Bulk enable channels
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BulkChannelStatusRequest'
+      responses:
+        '200':
+          description: Bulk enable result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BulkChannelStatusResponse'
+        '400':
+          $ref: '#/components/responses/APIError'
   /api/v1/channels/{id}:
     put:
       summary: Update channel
@@ -219,6 +299,144 @@ paths:
       responses:
         '204':
           description: Deleted
+  /api/v1/settings/status:
+    get:
+      summary: Runtime settings status
+      responses:
+        '200':
+          description: Settings status
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+  /api/v1/settings/webhooks:
+    get:
+      summary: Webhook delivery health
+      responses:
+        '200':
+          description: Webhook target health and recent delivery attempts
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WebhookHealthResponse'
+        '500':
+          $ref: '#/components/responses/APIError'
+  /api/v1/webhooks/replays:
+    get:
+      summary: List webhook replay queue entries
+      parameters:
+        - in: query
+          name: limit
+          schema: { type: integer, minimum: 1, maximum: 500, default: 50 }
+        - in: query
+          name: offset
+          schema: { type: integer, minimum: 0, default: 0 }
+        - in: query
+          name: status
+          schema: { type: string, enum: [queued, processing, delivered, failed, cancelled] }
+        - in: query
+          name: target_url
+          schema: { type: string, format: uri }
+        - in: query
+          name: event_name
+          schema: { type: string }
+        - in: query
+          name: event_id
+          schema: { type: string }
+      responses:
+        '200':
+          description: Paginated webhook replay queue
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WebhookReplayListResponse'
+        '400':
+          $ref: '#/components/responses/APIError'
+  /api/v1/webhooks/replays/{id}/replay:
+    post:
+      summary: Replay a webhook queue entry now
+      responses:
+        '200':
+          description: Replay attempted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message: { type: string }
+                  replay:
+                    $ref: '#/components/schemas/WebhookReplay'
+  /api/v1/webhooks/replays/{id}/cancel:
+    post:
+      summary: Cancel a webhook queue entry
+      responses:
+        '200':
+          description: Replay cancelled
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message: { type: string }
+                  replay:
+                    $ref: '#/components/schemas/WebhookReplay'
+  /api/v1/webhooks/replays/replay-failed:
+    post:
+      summary: Replay a batch of failed webhook queue entries
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                limit: { type: integer, minimum: 1, maximum: 200, default: 20 }
+      responses:
+        '200':
+          description: Bulk replay result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  requested: { type: integer }
+                  succeeded: { type: integer }
+                  failed: { type: integer }
+                  errors:
+                    type: array
+                    items: { type: string }
+  /api/v1/audit-events:
+    get:
+      summary: List audit events
+      parameters:
+        - in: query
+          name: action
+          schema: { type: string }
+        - in: query
+          name: resource
+          schema: { type: string }
+        - in: query
+          name: auth_actor
+          schema: { type: string }
+        - in: query
+          name: source
+          schema: { type: string }
+        - in: query
+          name: limit
+          schema: { type: integer, minimum: 1, maximum: 500, default: 100 }
+        - in: query
+          name: offset
+          schema: { type: integer, minimum: 0, default: 0 }
+      responses:
+        '200':
+          description: Paginated audit events list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuditEventsListResponse'
+        '400':
+          $ref: '#/components/responses/APIError'
   /api/v1/meta/openapi:
     get:
       summary: OpenAPI contract (YAML)
@@ -381,6 +599,178 @@ components:
         instagram_access_token: { type: string, nullable: true }
         instagram_business_account_id: { type: string, nullable: true }
         instagram_api_base_url: { type: string, format: uri, nullable: true }
+    WebhookDeliverySummary:
+      type: object
+      required: [total, delivered, failed, success_rate_pct]
+      properties:
+        total: { type: integer }
+        delivered: { type: integer }
+        failed: { type: integer }
+        success_rate_pct: { type: number }
+        last_delivery_at: { type: string, format: date-time, nullable: true }
+    WebhookTargetHealth:
+      type: object
+      required: [target_url, total, delivered, failed, last_status, last_event_name]
+      properties:
+        target_url: { type: string, format: uri }
+        total: { type: integer }
+        delivered: { type: integer }
+        failed: { type: integer }
+        last_status: { type: string }
+        last_http_status: { type: integer, nullable: true }
+        last_error: { type: string, nullable: true }
+        last_event_name: { type: string }
+        last_delivered_at: { type: string, format: date-time, nullable: true }
+    WebhookDeliveryHealth:
+      type: object
+      required: [id, event_id, event_name, target_url, status, source, duration_ms, occurred_at, delivered_at]
+      properties:
+        id: { type: integer }
+        event_id: { type: string }
+        event_name: { type: string }
+        target_url: { type: string, format: uri }
+        status: { type: string, enum: [delivered, failed] }
+        http_status: { type: integer, nullable: true }
+        error: { type: string, nullable: true }
+        source: { type: string }
+        duration_ms: { type: integer }
+        occurred_at: { type: string, format: date-time }
+        delivered_at: { type: string, format: date-time }
+    WebhookHealthResponse:
+      type: object
+      required: [configured, targets_configured, summary, targets, recent_deliveries]
+      properties:
+        configured: { type: boolean }
+        targets_configured: { type: integer }
+        summary:
+          $ref: '#/components/schemas/WebhookDeliverySummary'
+        targets:
+          type: array
+          items:
+            $ref: '#/components/schemas/WebhookTargetHealth'
+        recent_deliveries:
+          type: array
+          items:
+            $ref: '#/components/schemas/WebhookDeliveryHealth'
+    WebhookReplay:
+      type: object
+      required: [id, event_id, event_name, target_url, source, status, attempt_count, created_at, updated_at]
+      properties:
+        id: { type: integer }
+        delivery_id: { type: integer, nullable: true }
+        event_id: { type: string }
+        event_name: { type: string }
+        target_url: { type: string, format: uri }
+        source: { type: string }
+        status: { type: string, enum: [queued, processing, delivered, failed, cancelled] }
+        attempt_count: { type: integer }
+        last_error: { type: string, nullable: true }
+        last_http_status: { type: integer, nullable: true }
+        last_attempt_at: { type: string, format: date-time, nullable: true }
+        next_attempt_at: { type: string, format: date-time, nullable: true }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+    WebhookReplayListResponse:
+      type: object
+      required: [items, pagination]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/WebhookReplay'
+        pagination:
+          $ref: '#/components/schemas/Pagination'
+    PublishAttempt:
+      type: object
+      required: [id, post_id, channel_id, channel_name, channel_type, attempt_no, attempted_at, status]
+      properties:
+        id: { type: integer }
+        post_id: { type: integer }
+        channel_id: { type: integer }
+        channel_name: { type: string }
+        channel_type: { type: string }
+        attempt_no: { type: integer }
+        attempted_at: { type: string, format: date-time }
+        status: { type: string, enum: [sent, retry, failed] }
+        error: { type: string, nullable: true }
+        error_category: { type: string, nullable: true }
+        retry_at: { type: string, format: date-time, nullable: true }
+        external_id: { type: string, nullable: true }
+        permalink: { type: string, nullable: true }
+        screenshot_url: { type: string, format: uri, nullable: true }
+    PublishAttemptsListResponse:
+      type: object
+      required: [items, pagination]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/PublishAttempt'
+        pagination:
+          $ref: '#/components/schemas/Pagination'
+    AuditEvent:
+      type: object
+      required: [id, action, resource, auth_actor, source, created_at]
+      properties:
+        id: { type: integer }
+        action: { type: string }
+        resource: { type: string }
+        auth_actor: { type: string }
+        source: { type: string }
+        metadata: { type: string, nullable: true }
+        created_at: { type: string, format: date-time }
+    AuditEventsListResponse:
+      type: object
+      required: [items, pagination]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/AuditEvent'
+        pagination:
+          $ref: '#/components/schemas/Pagination'
+    ChannelHealthSummary:
+      type: object
+      required: [channel_id, channel_type, display_name, configured, sent_count, failed_count, retry_count]
+      properties:
+        channel_id: { type: integer }
+        channel_type: { type: string }
+        display_name: { type: string }
+        configured: { type: boolean }
+        last_success_at: { type: string, format: date-time, nullable: true }
+        last_attempt_at: { type: string, format: date-time, nullable: true }
+        sent_count: { type: integer }
+        failed_count: { type: integer }
+        retry_count: { type: integer }
+    ChannelHealthListResponse:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/ChannelHealthSummary'
+    BulkChannelStatusRequest:
+      type: object
+      required: [channel_ids]
+      properties:
+        channel_ids:
+          type: array
+          items: { type: integer }
+    BulkChannelStatusResponse:
+      type: object
+      required: [requested, succeeded, failed, updated]
+      properties:
+        requested: { type: integer }
+        succeeded: { type: integer }
+        failed: { type: integer }
+        errors:
+          type: array
+          items: { type: string }
+        updated:
+          type: array
+          items:
+            $ref: '#/components/schemas/Channel'
     ErrorCatalogEntry:
       type: object
       required: [code, status, description]

@@ -183,7 +183,7 @@ func registerProtectedRoutes(mux *http.ServeMux, uiAuth func(http.Handler) http.
 	mux.Handle("POST /settings/channels/{id}/enable", uiAuth(http.HandlerFunc(app.EnableChannel)))
 
 	apiMutating := func(handler http.HandlerFunc) http.Handler {
-		return apiAuth(http.HandlerFunc(app.WithAPIIdempotency(handler)))
+		return apiAuth(app.WithAPIAuditTrail(http.HandlerFunc(app.WithAPIIdempotency(handler))))
 	}
 
 	mux.Handle("GET /api/v1/posts", apiAuth(http.HandlerFunc(app.APIListPosts)))
@@ -197,6 +197,7 @@ func registerProtectedRoutes(mux *http.ServeMux, uiAuth func(http.Handler) http.
 	mux.Handle("POST /api/v1/posts/{id}/send-and-delete", apiMutating(app.APISendAndDeletePost))
 	mux.Handle("POST /api/v1/posts/{id}/reschedule", apiMutating(app.APIReschedulePost))
 	mux.Handle("GET /api/v1/posts/{id}/attempts", apiAuth(http.HandlerFunc(app.APIListPostAttempts)))
+	mux.Handle("GET /api/v1/publish-attempts", apiAuth(http.HandlerFunc(app.APIListPublishAttempts)))
 	mux.Handle("POST /api/v1/posts/{id}/attempts/{attempt_id}/screenshot", apiMutating(app.APISetPostAttemptScreenshot))
 	mux.Handle("POST /api/v1/posts/{id}/attempts/{attempt_id}/retry", apiMutating(app.APIRetryPostAttempt))
 	mux.Handle("POST /api/v1/posts/bulk/send-now", apiMutating(app.APIBulkSendNowPosts))
@@ -204,6 +205,7 @@ func registerProtectedRoutes(mux *http.ServeMux, uiAuth func(http.Handler) http.
 	mux.Handle("GET /api/v1/settings/status", apiAuth(http.HandlerFunc(app.APISettingsStatus)))
 	mux.Handle("GET /api/v1/settings/webhooks", apiAuth(http.HandlerFunc(app.APISettingsWebhookHealth)))
 	mux.Handle("GET /api/v1/webhooks/replays", apiAuth(http.HandlerFunc(app.APIListWebhookReplays)))
+	mux.Handle("GET /api/v1/audit-events", apiAuth(http.HandlerFunc(app.APIListAuditEvents)))
 	mux.Handle("POST /api/v1/webhooks/replays/{id}/replay", apiMutating(app.APIReplayWebhook))
 	mux.Handle("POST /api/v1/webhooks/replays/{id}/cancel", apiMutating(app.APICancelWebhookReplay))
 	mux.Handle("POST /api/v1/webhooks/replays/replay-failed", apiMutating(app.APIReplayFailedWebhooks))
@@ -213,6 +215,7 @@ func registerProtectedRoutes(mux *http.ServeMux, uiAuth func(http.Handler) http.
 	mux.Handle("GET /api/v1/analytics/weekly-snapshot", apiAuth(http.HandlerFunc(app.APIWeeklySnapshot)))
 	mux.Handle("POST /api/v1/settings/bot-handoff", apiMutating(app.APICreateBotHandoff))
 	mux.Handle("GET /api/v1/channels", apiAuth(http.HandlerFunc(app.APIListChannels)))
+	mux.Handle("GET /api/v1/channels/health", apiAuth(http.HandlerFunc(app.APIListChannelHealth)))
 	mux.Handle("POST /api/v1/channels", apiMutating(app.APICreateChannel))
 	mux.Handle("PUT /api/v1/channels/{id}", apiMutating(app.APIUpdateChannel))
 	mux.Handle("GET /api/v1/channels/{id}/rules", apiAuth(http.HandlerFunc(app.APIGetChannelRules)))
@@ -222,6 +225,8 @@ func registerProtectedRoutes(mux *http.ServeMux, uiAuth func(http.Handler) http.
 	mux.Handle("POST /api/v1/channels/{id}/test", apiMutating(app.APITestChannel))
 	mux.Handle("POST /api/v1/channels/{id}/disable", apiMutating(app.APIDisableChannel))
 	mux.Handle("POST /api/v1/channels/{id}/enable", apiMutating(app.APIEnableChannel))
+	mux.Handle("POST /api/v1/channels/bulk/disable", apiMutating(app.APIBulkDisableChannels))
+	mux.Handle("POST /api/v1/channels/bulk/enable", apiMutating(app.APIBulkEnableChannels))
 }
 
 func buildPublisher(cfg config.Config, logger *slog.Logger) (publisher.Publisher, string) {

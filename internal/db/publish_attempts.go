@@ -25,6 +25,14 @@ type PublishAttemptInput struct {
 	ScreenshotURL *string
 }
 
+type PublishAttemptFilter struct {
+	PostID        *int64
+	ChannelID     *int64
+	Status        string
+	AttemptedFrom *time.Time
+	AttemptedTo   *time.Time
+}
+
 func (s *Store) InsertPublishAttempt(ctx context.Context, input PublishAttemptInput) (model.PublishAttempt, error) {
 	if input.AttemptNo <= 0 {
 		return model.PublishAttempt{}, fmt.Errorf("attempt_no must be positive")
@@ -254,7 +262,7 @@ func scanPublishAttempt(s scanner) (model.PublishAttempt, error) {
 	return attempt, nil
 }
 
-func (s *Store) ListPublishAttemptsForPost(ctx context.Context, postID int64, channelID *int64, status string, attemptedFrom, attemptedTo *time.Time, limit, offset int) ([]model.PublishAttempt, error) {
+func (s *Store) ListPublishAttempts(ctx context.Context, filter PublishAttemptFilter, limit, offset int) ([]model.PublishAttempt, error) {
 	if limit <= 0 {
 		limit = 200
 	}
@@ -265,35 +273,13 @@ func (s *Store) ListPublishAttemptsForPost(ctx context.Context, postID int64, ch
 		offset = 0
 	}
 
-	query := `SELECT id, post_id, channel_id, attempt_no, attempted_at, status, error, error_category, retry_at, external_id, permalink, screenshot_url
-	 FROM publish_attempts
-	 WHERE post_id = ?`
-	args := []any{postID}
-
-	if channelID != nil && *channelID > 0 {
-		query += ` AND channel_id = ?`
-		args = append(args, *channelID)
-	}
-	trimmedStatus := strings.TrimSpace(status)
-	if trimmedStatus != "" {
-		query += ` AND status = ?`
-		args = append(args, trimmedStatus)
-	}
-	if attemptedFrom != nil {
-		query += ` AND attempted_at >= ?`
-		args = append(args, formatDBTime(attemptedFrom.UTC()))
-	}
-	if attemptedTo != nil {
-		query += ` AND attempted_at <= ?`
-		args = append(args, formatDBTime(attemptedTo.UTC()))
-	}
-
+	query, args := buildPublishAttemptsQuery(filter, false)
 	query += ` ORDER BY attempted_at DESC, id DESC LIMIT ? OFFSET ?`
 	args = append(args, limit, offset)
 
 	rows, err := s.db.QueryContext(ctx, query, args...)
 	if err != nil {
-		return nil, fmt.Errorf("list publish attempts for post %d: %w", postID, err)
+		return nil, fmt.Errorf("list publish attempts: %w", err)
 	}
 	defer rows.Close()
 
@@ -312,32 +298,77 @@ func (s *Store) ListPublishAttemptsForPost(ctx context.Context, postID int64, ch
 	return attempts, nil
 }
 
-func (s *Store) CountPublishAttemptsForPost(ctx context.Context, postID int64, channelID *int64, status string, attemptedFrom, attemptedTo *time.Time) (int, error) {
-	query := `SELECT COUNT(1)
-	 FROM publish_attempts
-	 WHERE post_id = ?`
-	args := []any{postID}
+func (s *Store) CountPublishAttempts(ctx context.Context, filter PublishAttemptFilter) (int, error) {
+	query, args := buildPublishAttemptsQuery(filter, true)
 
-	if channelID != nil && *channelID > 0 {
-		query += ` AND channel_id = ?`
-		args = append(args, *channelID)
+	var count int
+	if err := s.db.QueryRowContext(ctx, query, args...).Scan(&count); err != nil {
+		return 0, fmt.Errorf("count publish attempts: %w", err)
 	}
-	trimmedStatus := strings.TrimSpace(status)
+
+	return count, nil
+}
+
+func buildPublishAttemptsQuery(filter PublishAttemptFilter, countOnly bool) (string, []any) {
+	query := `SELECT id, post_id, channel_id, attempt_no, attempted_at, status, error, error_category, retry_at, external_id, permalink, screenshot_url
+	 FROM publish_attempts
+	 WHERE 1 = 1`
+	if countOnly {
+		query = `SELECT COUNT(1)
+	 FROM publish_attempts
+	 WHERE 1 = 1`
+	}
+
+	args := make([]any, 0, 5)
+
+	if filter.PostID != nil {
+		query += ` AND post_id = ?`
+		args = append(args, *filter.PostID)
+	}
+	if filter.ChannelID != nil {
+		query += ` AND channel_id = ?`
+		args = append(args, *filter.ChannelID)
+	}
+
+	trimmedStatus := strings.TrimSpace(filter.Status)
 	if trimmedStatus != "" {
 		query += ` AND status = ?`
 		args = append(args, trimmedStatus)
 	}
-	if attemptedFrom != nil {
+	if filter.AttemptedFrom != nil {
 		query += ` AND attempted_at >= ?`
-		args = append(args, formatDBTime(attemptedFrom.UTC()))
+		args = append(args, formatDBTime(filter.AttemptedFrom.UTC()))
 	}
-	if attemptedTo != nil {
+	if filter.AttemptedTo != nil {
 		query += ` AND attempted_at <= ?`
-		args = append(args, formatDBTime(attemptedTo.UTC()))
+		args = append(args, formatDBTime(filter.AttemptedTo.UTC()))
 	}
 
-	var count int
-	if err := s.db.QueryRowContext(ctx, query, args...).Scan(&count); err != nil {
+	return query, args
+}
+
+func (s *Store) ListPublishAttemptsForPost(ctx context.Context, postID int64, channelID *int64, status string, attemptedFrom, attemptedTo *time.Time, limit, offset int) ([]model.PublishAttempt, error) {
+	filter := PublishAttemptFilter{PostID: &postID, Status: status, AttemptedFrom: attemptedFrom, AttemptedTo: attemptedTo}
+	if channelID != nil && *channelID > 0 {
+		filter.ChannelID = channelID
+	}
+
+	attempts, err := s.ListPublishAttempts(ctx, filter, limit, offset)
+	if err != nil {
+		return nil, fmt.Errorf("list publish attempts for post %d: %w", postID, err)
+	}
+
+	return attempts, nil
+}
+
+func (s *Store) CountPublishAttemptsForPost(ctx context.Context, postID int64, channelID *int64, status string, attemptedFrom, attemptedTo *time.Time) (int, error) {
+	filter := PublishAttemptFilter{PostID: &postID, Status: status, AttemptedFrom: attemptedFrom, AttemptedTo: attemptedTo}
+	if channelID != nil && *channelID > 0 {
+		filter.ChannelID = channelID
+	}
+
+	count, err := s.CountPublishAttempts(ctx, filter)
+	if err != nil {
 		return 0, fmt.Errorf("count publish attempts for post %d: %w", postID, err)
 	}
 

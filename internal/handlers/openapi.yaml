@@ -151,6 +151,40 @@ paths:
                 $ref: '#/components/schemas/PostMutationResponse'
         '400':
           $ref: '#/components/responses/APIError'
+  /api/v1/publish-attempts:
+    get:
+      summary: List publish attempts across posts
+      parameters:
+        - in: query
+          name: post_id
+          schema: { type: integer }
+        - in: query
+          name: channel_id
+          schema: { type: integer }
+        - in: query
+          name: status
+          schema: { type: string, enum: [sent, retry, failed] }
+        - in: query
+          name: attempted_from
+          schema: { type: string, format: date-time }
+        - in: query
+          name: attempted_to
+          schema: { type: string, format: date-time }
+        - in: query
+          name: limit
+          schema: { type: integer, minimum: 1, maximum: 500, default: 200 }
+        - in: query
+          name: offset
+          schema: { type: integer, minimum: 0, default: 0 }
+      responses:
+        '200':
+          description: Paginated publish attempts list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PublishAttemptsListResponse'
+        '400':
+          $ref: '#/components/responses/APIError'
   /api/v1/channels:
     get:
       summary: List channels
@@ -194,6 +228,52 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Channel'
+  /api/v1/channels/health:
+    get:
+      summary: List per-channel health summary
+      responses:
+        '200':
+          description: Channel health list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChannelHealthListResponse'
+  /api/v1/channels/bulk/disable:
+    post:
+      summary: Bulk disable channels
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BulkChannelStatusRequest'
+      responses:
+        '200':
+          description: Bulk disable result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BulkChannelStatusResponse'
+        '400':
+          $ref: '#/components/responses/APIError'
+  /api/v1/channels/bulk/enable:
+    post:
+      summary: Bulk enable channels
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BulkChannelStatusRequest'
+      responses:
+        '200':
+          description: Bulk enable result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BulkChannelStatusResponse'
+        '400':
+          $ref: '#/components/responses/APIError'
   /api/v1/channels/{id}:
     put:
       summary: Update channel
@@ -326,6 +406,37 @@ paths:
                   errors:
                     type: array
                     items: { type: string }
+  /api/v1/audit-events:
+    get:
+      summary: List audit events
+      parameters:
+        - in: query
+          name: action
+          schema: { type: string }
+        - in: query
+          name: resource
+          schema: { type: string }
+        - in: query
+          name: auth_actor
+          schema: { type: string }
+        - in: query
+          name: source
+          schema: { type: string }
+        - in: query
+          name: limit
+          schema: { type: integer, minimum: 1, maximum: 500, default: 100 }
+        - in: query
+          name: offset
+          schema: { type: integer, minimum: 0, default: 0 }
+      responses:
+        '200':
+          description: Paginated audit events list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuditEventsListResponse'
+        '400':
+          $ref: '#/components/responses/APIError'
   /api/v1/meta/openapi:
     get:
       summary: OpenAPI contract (YAML)
@@ -569,6 +680,97 @@ components:
             $ref: '#/components/schemas/WebhookReplay'
         pagination:
           $ref: '#/components/schemas/Pagination'
+    PublishAttempt:
+      type: object
+      required: [id, post_id, channel_id, channel_name, channel_type, attempt_no, attempted_at, status]
+      properties:
+        id: { type: integer }
+        post_id: { type: integer }
+        channel_id: { type: integer }
+        channel_name: { type: string }
+        channel_type: { type: string }
+        attempt_no: { type: integer }
+        attempted_at: { type: string, format: date-time }
+        status: { type: string, enum: [sent, retry, failed] }
+        error: { type: string, nullable: true }
+        error_category: { type: string, nullable: true }
+        retry_at: { type: string, format: date-time, nullable: true }
+        external_id: { type: string, nullable: true }
+        permalink: { type: string, nullable: true }
+        screenshot_url: { type: string, format: uri, nullable: true }
+    PublishAttemptsListResponse:
+      type: object
+      required: [items, pagination]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/PublishAttempt'
+        pagination:
+          $ref: '#/components/schemas/Pagination'
+    AuditEvent:
+      type: object
+      required: [id, action, resource, auth_actor, source, created_at]
+      properties:
+        id: { type: integer }
+        action: { type: string }
+        resource: { type: string }
+        auth_actor: { type: string }
+        source: { type: string }
+        metadata: { type: string, nullable: true }
+        created_at: { type: string, format: date-time }
+    AuditEventsListResponse:
+      type: object
+      required: [items, pagination]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/AuditEvent'
+        pagination:
+          $ref: '#/components/schemas/Pagination'
+    ChannelHealthSummary:
+      type: object
+      required: [channel_id, channel_type, display_name, configured, sent_count, failed_count, retry_count]
+      properties:
+        channel_id: { type: integer }
+        channel_type: { type: string }
+        display_name: { type: string }
+        configured: { type: boolean }
+        last_success_at: { type: string, format: date-time, nullable: true }
+        last_attempt_at: { type: string, format: date-time, nullable: true }
+        sent_count: { type: integer }
+        failed_count: { type: integer }
+        retry_count: { type: integer }
+    ChannelHealthListResponse:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/ChannelHealthSummary'
+    BulkChannelStatusRequest:
+      type: object
+      required: [channel_ids]
+      properties:
+        channel_ids:
+          type: array
+          items: { type: integer }
+    BulkChannelStatusResponse:
+      type: object
+      required: [requested, succeeded, failed, updated]
+      properties:
+        requested: { type: integer }
+        succeeded: { type: integer }
+        failed: { type: integer }
+        errors:
+          type: array
+          items: { type: string }
+        updated:
+          type: array
+          items:
+            $ref: '#/components/schemas/Channel'
     ErrorCatalogEntry:
       type: object
       required: [code, status, description]
