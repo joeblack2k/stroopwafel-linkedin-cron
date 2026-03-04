@@ -285,7 +285,7 @@ func Migrate(ctx context.Context, database *sql.DB) (string, error) {
 			_ = tx.Rollback()
 			return "", fmt.Errorf("apply migration %s: %w", item.name, err)
 		}
-		if _, err := tx.ExecContext(ctx, `INSERT INTO schema_migrations(name, applied_at) VALUES(?, ?)`, item.name, now); err != nil {
+		if _, err := tx.ExecContext(ctx, `INSERT OR IGNORE INTO schema_migrations(name, applied_at) VALUES(?, ?)`, item.name, now); err != nil {
 			_ = tx.Rollback()
 			return "", fmt.Errorf("record migration %s: %w", item.name, err)
 		}
