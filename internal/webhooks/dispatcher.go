@@ -32,6 +32,19 @@ type EventEnvelope struct {
 	Payload    map[string]any `json:"payload"`
 }
 
+type DeliveryOutcome struct {
+	EventID     string
+	EventName   string
+	TargetURL   string
+	Source      string
+	OccurredAt  time.Time
+	DeliveredAt time.Time
+	DurationMS  int64
+	Delivered   bool
+	HTTPStatus  *int
+	Error       *string
+}
+
 func NewDispatcher(urls []string, secret string, source string, logger *slog.Logger) *Dispatcher {
 	sanitized := normalizeURLs(urls)
 	if logger == nil {
@@ -51,40 +64,66 @@ func (d *Dispatcher) Enabled() bool {
 	return d != nil && d.enabled
 }
 
-func (d *Dispatcher) Emit(ctx context.Context, eventName string, payload map[string]any) {
+func (d *Dispatcher) Emit(ctx context.Context, eventName string, payload map[string]any) []DeliveryOutcome {
 	if !d.Enabled() {
-		return
+		return nil
 	}
 
+	occurredAt := time.Now().UTC()
 	envelope := EventEnvelope{
 		ID:         buildEventID(),
 		Event:      strings.TrimSpace(eventName),
-		OccurredAt: time.Now().UTC().Format(time.RFC3339),
+		OccurredAt: occurredAt.Format(time.RFC3339),
 		Source:     defaultSource(d.source),
 		Payload:    payload,
 	}
 	encoded, err := json.Marshal(envelope)
 	if err != nil {
 		d.logger.LogAttrs(ctx, slog.LevelWarn, "failed to encode webhook event", slog.String("component", "webhook"), slog.String("error", err.Error()))
-		return
+		return nil
 	}
 
+	results := make([]DeliveryOutcome, 0, len(d.urls))
 	for _, endpoint := range d.urls {
-		if err := d.deliver(ctx, endpoint, envelope, encoded); err != nil {
-			d.logger.LogAttrs(ctx, slog.LevelWarn, "webhook delivery failed", slog.String("component", "webhook"), slog.String("event", envelope.Event), slog.String("url", endpoint), slog.String("error", err.Error()))
-			continue
+		httpStatus, sendErr, durationMS := d.deliver(ctx, endpoint, envelope, encoded)
+		deliveredAt := time.Now().UTC()
+
+		outcome := DeliveryOutcome{
+			EventID:     envelope.ID,
+			EventName:   envelope.Event,
+			TargetURL:   endpoint,
+			Source:      envelope.Source,
+			OccurredAt:  occurredAt,
+			DeliveredAt: deliveredAt,
+			DurationMS:  durationMS,
+			Delivered:   sendErr == nil,
 		}
-		d.logger.LogAttrs(ctx, slog.LevelInfo, "webhook delivered", slog.String("component", "webhook"), slog.String("event", envelope.Event), slog.String("url", endpoint), slog.String("event_id", envelope.ID))
+		if httpStatus > 0 {
+			status := httpStatus
+			outcome.HTTPStatus = &status
+		}
+		if sendErr != nil {
+			errText := sendErr.Error()
+			outcome.Error = &errText
+			d.logger.LogAttrs(ctx, slog.LevelWarn, "webhook delivery failed", slog.String("component", "webhook"), slog.String("event", envelope.Event), slog.String("url", endpoint), slog.String("error", sendErr.Error()))
+		} else {
+			d.logger.LogAttrs(ctx, slog.LevelInfo, "webhook delivered", slog.String("component", "webhook"), slog.String("event", envelope.Event), slog.String("url", endpoint), slog.String("event_id", envelope.ID))
+		}
+
+		results = append(results, outcome)
 	}
+
+	return results
 }
 
-func (d *Dispatcher) deliver(parent context.Context, endpoint string, envelope EventEnvelope, body []byte) error {
+func (d *Dispatcher) deliver(parent context.Context, endpoint string, envelope EventEnvelope, body []byte) (int, error, int64) {
+	startedAt := time.Now()
 	deliverCtx, cancel := context.WithTimeout(parent, 4*time.Second)
 	defer cancel()
 
 	request, err := http.NewRequestWithContext(deliverCtx, http.MethodPost, endpoint, bytes.NewReader(body))
 	if err != nil {
-		return fmt.Errorf("build webhook request: %w", err)
+		return 0, fmt.Errorf("build webhook request: %w", err), time.Since(startedAt).Milliseconds()
 	}
 	request.Header.Set("Content-Type", "application/json")
 	request.Header.Set("X-Stroopwafel-Event", envelope.Event)
@@ -96,14 +135,14 @@ func (d *Dispatcher) deliver(parent context.Context, endpoint string, envelope E
 
 	response, err := d.client.Do(request)
 	if err != nil {
-		return fmt.Errorf("send webhook request: %w", err)
+		return 0, fmt.Errorf("send webhook request: %w", err), time.Since(startedAt).Milliseconds()
 	}
 	defer response.Body.Close()
 
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		return fmt.Errorf("unexpected webhook status %d", response.StatusCode)
+		return response.StatusCode, fmt.Errorf("unexpected webhook status %d", response.StatusCode), time.Since(startedAt).Milliseconds()
 	}
-	return nil
+	return response.StatusCode, nil, time.Since(startedAt).Milliseconds()
 }
 
 func (d *Dispatcher) signature(timestamp string, body []byte) string {

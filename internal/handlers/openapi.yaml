@@ -219,6 +219,29 @@ paths:
       responses:
         '204':
           description: Deleted
+  /api/v1/settings/status:
+    get:
+      summary: Runtime settings status
+      responses:
+        '200':
+          description: Settings status
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+  /api/v1/settings/webhooks:
+    get:
+      summary: Webhook delivery health
+      responses:
+        '200':
+          description: Webhook target health and recent delivery attempts
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WebhookHealthResponse'
+        '500':
+          $ref: '#/components/responses/APIError'
   /api/v1/meta/openapi:
     get:
       summary: OpenAPI contract (YAML)
@@ -381,6 +404,59 @@ components:
         instagram_access_token: { type: string, nullable: true }
         instagram_business_account_id: { type: string, nullable: true }
         instagram_api_base_url: { type: string, format: uri, nullable: true }
+    WebhookDeliverySummary:
+      type: object
+      required: [total, delivered, failed, success_rate_pct]
+      properties:
+        total: { type: integer }
+        delivered: { type: integer }
+        failed: { type: integer }
+        success_rate_pct: { type: number }
+        last_delivery_at: { type: string, format: date-time, nullable: true }
+    WebhookTargetHealth:
+      type: object
+      required: [target_url, total, delivered, failed, last_status, last_event_name]
+      properties:
+        target_url: { type: string, format: uri }
+        total: { type: integer }
+        delivered: { type: integer }
+        failed: { type: integer }
+        last_status: { type: string }
+        last_http_status: { type: integer, nullable: true }
+        last_error: { type: string, nullable: true }
+        last_event_name: { type: string }
+        last_delivered_at: { type: string, format: date-time, nullable: true }
+    WebhookDeliveryHealth:
+      type: object
+      required: [id, event_id, event_name, target_url, status, source, duration_ms, occurred_at, delivered_at]
+      properties:
+        id: { type: integer }
+        event_id: { type: string }
+        event_name: { type: string }
+        target_url: { type: string, format: uri }
+        status: { type: string, enum: [delivered, failed] }
+        http_status: { type: integer, nullable: true }
+        error: { type: string, nullable: true }
+        source: { type: string }
+        duration_ms: { type: integer }
+        occurred_at: { type: string, format: date-time }
+        delivered_at: { type: string, format: date-time }
+    WebhookHealthResponse:
+      type: object
+      required: [configured, targets_configured, summary, targets, recent_deliveries]
+      properties:
+        configured: { type: boolean }
+        targets_configured: { type: integer }
+        summary:
+          $ref: '#/components/schemas/WebhookDeliverySummary'
+        targets:
+          type: array
+          items:
+            $ref: '#/components/schemas/WebhookTargetHealth'
+        recent_deliveries:
+          type: array
+          items:
+            $ref: '#/components/schemas/WebhookDeliveryHealth'
     ErrorCatalogEntry:
       type: object
       required: [code, status, description]

@@ -182,6 +182,7 @@ API keys are stored hashed in SQLite.
 - Instagram channels are first-class with dedicated credentials and publisher implementation.
 - List endpoints now support pagination and filters (`limit`, `offset`, `q`, status/type filters).
 - Publish lifecycle webhooks are emitted for agents (`publish.attempt.created`, `post.state.changed`).
+- Webhook delivery telemetry is persisted and exposed in Settings + API (`GET /api/v1/settings/webhooks`).
 - OpenAPI and error catalog are exposed at API metadata endpoints.
 
 ## UI Endpoints
@@ -241,6 +242,7 @@ API keys are stored hashed in SQLite.
 - `POST /api/v1/posts/bulk/send-now`
 - `POST /api/v1/posts/bulk/channels`
 - `GET /api/v1/settings/status`
+- `GET /api/v1/settings/webhooks`
 - `GET /api/v1/meta/openapi`
 - `GET /api/v1/meta/error-codes`
 - `GET /api/v1/analytics/overview`

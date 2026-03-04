@@ -67,6 +67,12 @@ func TestMigrateBootstrapsSchema(t *testing.T) {
 	if tableCount != 1 {
 		t.Fatalf("expected api_idempotency table to exist, got count=%d", tableCount)
 	}
+	if err := database.QueryRow(`SELECT COUNT(1) FROM sqlite_master WHERE type='table' AND name='webhook_deliveries'`).Scan(&tableCount); err != nil {
+		t.Fatalf("query webhook_deliveries table: %v", err)
+	}
+	if tableCount != 1 {
+		t.Fatalf("expected webhook_deliveries table to exist, got count=%d", tableCount)
+	}
 
 	var columnCount int
 	if err := database.QueryRow(`SELECT COUNT(1) FROM pragma_table_info('posts') WHERE name='next_retry_at'`).Scan(&columnCount); err != nil {

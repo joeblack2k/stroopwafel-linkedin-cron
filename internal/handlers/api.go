@@ -49,12 +49,143 @@ type postsListResponse struct {
 	Pagination paginationResponse `json:"pagination"`
 }
 
+type webhookSettingsHealthResponse struct {
+	Configured        bool                            `json:"configured"`
+	TargetsConfigured int                             `json:"targets_configured"`
+	Summary           webhookDeliverySummaryResponse  `json:"summary"`
+	Targets           []webhookTargetHealthResponse   `json:"targets"`
+	RecentDeliveries  []webhookDeliveryHealthResponse `json:"recent_deliveries"`
+}
+
+type webhookDeliverySummaryResponse struct {
+	Total          int     `json:"total"`
+	Delivered      int     `json:"delivered"`
+	Failed         int     `json:"failed"`
+	SuccessRatePct float64 `json:"success_rate_pct"`
+	LastDeliveryAt *string `json:"last_delivery_at,omitempty"`
+}
+
+type webhookTargetHealthResponse struct {
+	TargetURL       string  `json:"target_url"`
+	Total           int     `json:"total"`
+	Delivered       int     `json:"delivered"`
+	Failed          int     `json:"failed"`
+	LastStatus      string  `json:"last_status"`
+	LastHTTPStatus  *int    `json:"last_http_status,omitempty"`
+	LastError       *string `json:"last_error,omitempty"`
+	LastEventName   string  `json:"last_event_name"`
+	LastDeliveredAt *string `json:"last_delivered_at,omitempty"`
+}
+
+type webhookDeliveryHealthResponse struct {
+	ID          int64   `json:"id"`
+	EventID     string  `json:"event_id"`
+	EventName   string  `json:"event_name"`
+	TargetURL   string  `json:"target_url"`
+	Status      string  `json:"status"`
+	HTTPStatus  *int    `json:"http_status,omitempty"`
+	Error       *string `json:"error,omitempty"`
+	Source      string  `json:"source"`
+	DurationMS  int64   `json:"duration_ms"`
+	OccurredAt  string  `json:"occurred_at"`
+	DeliveredAt string  `json:"delivered_at"`
+}
+
 func (a *App) APIHealthz(w http.ResponseWriter, r *http.Request) {
 	a.handleHealth(w, r, "api")
 }
 
 func (a *App) APISettingsStatus(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, a.settingsStatus())
+}
+
+func (a *App) APISettingsWebhookHealth(w http.ResponseWriter, r *http.Request) {
+	targetStats, err := a.Store.ListWebhookTargetStats(r.Context())
+	if err != nil {
+		writeAPIError(w, http.StatusInternalServerError, "failed to load webhook target stats")
+		return
+	}
+
+	recentDeliveries, err := a.Store.ListRecentWebhookDeliveries(r.Context(), 50)
+	if err != nil {
+		writeAPIError(w, http.StatusInternalServerError, "failed to load webhook deliveries")
+		return
+	}
+
+	targets := make([]webhookTargetHealthResponse, 0, len(targetStats))
+	total := 0
+	delivered := 0
+	failed := 0
+	var lastDeliveryAt *string
+
+	for _, item := range targetStats {
+		total += item.Total
+		delivered += item.Delivered
+		failed += item.Failed
+
+		var lastDeliveredAt *string
+		if item.LastDeliveredAt != nil {
+			formatted := item.LastDeliveredAt.UTC().Format(time.RFC3339)
+			lastDeliveredAt = &formatted
+			if lastDeliveryAt == nil || formatted > *lastDeliveryAt {
+				lastCopy := formatted
+				lastDeliveryAt = &lastCopy
+			}
+		}
+
+		targets = append(targets, webhookTargetHealthResponse{
+			TargetURL:       item.TargetURL,
+			Total:           item.Total,
+			Delivered:       item.Delivered,
+			Failed:          item.Failed,
+			LastStatus:      item.LastStatus,
+			LastHTTPStatus:  item.LastHTTPStatus,
+			LastError:       item.LastError,
+			LastEventName:   item.LastEventName,
+			LastDeliveredAt: lastDeliveredAt,
+		})
+	}
+
+	if lastDeliveryAt == nil && len(recentDeliveries) > 0 {
+		formatted := recentDeliveries[0].DeliveredAt.UTC().Format(time.RFC3339)
+		lastDeliveryAt = &formatted
+	}
+
+	recent := make([]webhookDeliveryHealthResponse, 0, len(recentDeliveries))
+	for _, item := range recentDeliveries {
+		recent = append(recent, webhookDeliveryHealthResponse{
+			ID:          item.ID,
+			EventID:     item.EventID,
+			EventName:   item.EventName,
+			TargetURL:   item.TargetURL,
+			Status:      item.Status,
+			HTTPStatus:  item.HTTPStatus,
+			Error:       item.Error,
+			Source:      item.Source,
+			DurationMS:  item.DurationMS,
+			OccurredAt:  item.OccurredAt.UTC().Format(time.RFC3339),
+			DeliveredAt: item.DeliveredAt.UTC().Format(time.RFC3339),
+		})
+	}
+
+	successRate := 0.0
+	if total > 0 {
+		successRate = (float64(delivered) / float64(total)) * 100
+	}
+
+	writeJSON(w, http.StatusOK, webhookSettingsHealthResponse{
+		Configured:        len(a.Config.WebhookURLs) > 0,
+		TargetsConfigured: len(a.Config.WebhookURLs),
+		Summary: webhookDeliverySummaryResponse{
+			Total:          total,
+			Delivered:      delivered,
+			Failed:         failed,
+			SuccessRatePct: successRate,
+			LastDeliveryAt: lastDeliveryAt,
+		},
+		Targets:          targets,
+		RecentDeliveries: recent,
+	})
 }
 
 func (a *App) APIListPosts(w http.ResponseWriter, r *http.Request) {

@@ -43,15 +43,17 @@ func main() {
 		os.Exit(1)
 	}
 
+	store := db.NewStore(database)
 	pub := buildPublisher(cfg, logger)
-	service := scheduler.NewService(db.NewStore(database), pub, logger)
+	service := scheduler.NewService(store, pub, logger)
 	service.SetChannelPublisherResolver(func(channel model.Channel) publisher.Publisher {
 		return buildChannelPublisher(channel, logger)
 	})
 
 	webhookDispatcher := webhooks.NewDispatcher(cfg.WebhookURLs, cfg.WebhookSecret, "scheduler", logger)
 	service.SetEventNotifier(func(ctx context.Context, eventName string, payload map[string]any) {
-		webhookDispatcher.Emit(ctx, eventName, payload)
+		outcomes := webhookDispatcher.Emit(ctx, eventName, payload)
+		persistWebhookOutcomes(ctx, store, logger, outcomes)
 	})
 
 	processed, err := service.RunDue(context.Background())
@@ -130,4 +132,41 @@ func derefNullableString(value *string) string {
 		return ""
 	}
 	return *value
+}
+
+func persistWebhookOutcomes(ctx context.Context, store *db.Store, logger *slog.Logger, outcomes []webhooks.DeliveryOutcome) {
+	if store == nil || len(outcomes) == 0 {
+		return
+	}
+
+	for _, outcome := range outcomes {
+		status := "failed"
+		if outcome.Delivered {
+			status = "delivered"
+		}
+
+		_, err := store.InsertWebhookDelivery(ctx, db.WebhookDeliveryInput{
+			EventID:     outcome.EventID,
+			EventName:   outcome.EventName,
+			TargetURL:   outcome.TargetURL,
+			Status:      status,
+			HTTPStatus:  outcome.HTTPStatus,
+			Error:       outcome.Error,
+			Source:      outcome.Source,
+			DurationMS:  outcome.DurationMS,
+			OccurredAt:  outcome.OccurredAt,
+			DeliveredAt: outcome.DeliveredAt,
+		})
+		if err != nil {
+			logger.LogAttrs(
+				ctx,
+				slog.LevelWarn,
+				"failed to persist webhook delivery",
+				slog.String("component", "webhook"),
+				slog.String("event", outcome.EventName),
+				slog.String("url", outcome.TargetURL),
+				slog.String("error", err.Error()),
+			)
+		}
+	}
 }

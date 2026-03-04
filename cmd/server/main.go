@@ -61,7 +61,8 @@ func main() {
 
 	webhookDispatcher := webhooks.NewDispatcher(cfg.WebhookURLs, cfg.WebhookSecret, "server", logger)
 	schedulerService.SetEventNotifier(func(ctx context.Context, eventName string, payload map[string]any) {
-		webhookDispatcher.Emit(ctx, eventName, payload)
+		outcomes := webhookDispatcher.Emit(ctx, eventName, payload)
+		persistWebhookOutcomes(ctx, store, logger, outcomes)
 	})
 
 	renderer, err := views.NewRenderer(filepath.Join("web", "templates", "*.html"))
@@ -196,6 +197,7 @@ func registerProtectedRoutes(mux *http.ServeMux, uiAuth func(http.Handler) http.
 	mux.Handle("POST /api/v1/posts/bulk/send-now", apiMutating(app.APIBulkSendNowPosts))
 	mux.Handle("POST /api/v1/posts/bulk/channels", apiMutating(app.APIBulkSetPostChannels))
 	mux.Handle("GET /api/v1/settings/status", apiAuth(http.HandlerFunc(app.APISettingsStatus)))
+	mux.Handle("GET /api/v1/settings/webhooks", apiAuth(http.HandlerFunc(app.APISettingsWebhookHealth)))
 	mux.Handle("GET /api/v1/meta/openapi", apiAuth(http.HandlerFunc(app.APIOpenAPI)))
 	mux.Handle("GET /api/v1/meta/error-codes", apiAuth(http.HandlerFunc(app.APIErrorCatalog)))
 	mux.Handle("GET /api/v1/analytics/overview", apiAuth(http.HandlerFunc(app.APIAnalyticsOverview)))
@@ -281,6 +283,43 @@ func derefNullableString(value *string) string {
 		return ""
 	}
 	return *value
+}
+
+func persistWebhookOutcomes(ctx context.Context, store *db.Store, logger *slog.Logger, outcomes []webhooks.DeliveryOutcome) {
+	if store == nil || len(outcomes) == 0 {
+		return
+	}
+
+	for _, outcome := range outcomes {
+		status := "failed"
+		if outcome.Delivered {
+			status = "delivered"
+		}
+
+		_, err := store.InsertWebhookDelivery(ctx, db.WebhookDeliveryInput{
+			EventID:     outcome.EventID,
+			EventName:   outcome.EventName,
+			TargetURL:   outcome.TargetURL,
+			Status:      status,
+			HTTPStatus:  outcome.HTTPStatus,
+			Error:       outcome.Error,
+			Source:      outcome.Source,
+			DurationMS:  outcome.DurationMS,
+			OccurredAt:  outcome.OccurredAt,
+			DeliveredAt: outcome.DeliveredAt,
+		})
+		if err != nil {
+			logger.LogAttrs(
+				ctx,
+				slog.LevelWarn,
+				"failed to persist webhook delivery",
+				slog.String("component", "webhook"),
+				slog.String("event", outcome.EventName),
+				slog.String("url", outcome.TargetURL),
+				slog.String("error", err.Error()),
+			)
+		}
+	}
 }
 
 func requestLogger(logger *slog.Logger, next http.Handler) http.Handler {

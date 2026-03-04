@@ -103,6 +103,96 @@
     </section>
 
     <section class="actions">
+      <h3>Webhook health</h3>
+      <table>
+        <tbody>
+          <tr><th>Total deliveries</th><td>{{.WebhookTotal}}</td></tr>
+          <tr><th>Delivered</th><td>{{.WebhookDelivered}}</td></tr>
+          <tr><th>Failed</th><td>{{.WebhookFailed}}</td></tr>
+          <tr><th>Success rate</th><td>{{printf "%.1f" .WebhookSuccessRate}}%</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section class="actions">
+      <h3>Webhook targets</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>Target URL</th>
+            <th>Delivered / Total</th>
+            <th>Failed</th>
+            <th>Failure rate</th>
+            <th>Last status</th>
+            <th>Last HTTP</th>
+            <th>Last event</th>
+            <th>Last delivery</th>
+            <th>Last error</th>
+          </tr>
+        </thead>
+        <tbody>
+          {{if .WebhookTargetStats}}
+            {{range .WebhookTargetStats}}
+              <tr>
+                <td><code>{{.TargetURL}}</code></td>
+                <td>{{.Delivered}} / {{.Total}}</td>
+                <td>{{.Failed}}</td>
+                <td>{{printf "%.1f" .FailurePercentage}}%</td>
+                <td>{{.LastStatus}}</td>
+                <td>{{.LastHTTPStatus}}</td>
+                <td>{{.LastEventName}}</td>
+                <td>{{.LastDeliveredAt}}</td>
+                <td>{{.LastError}}</td>
+              </tr>
+            {{end}}
+          {{else}}
+            <tr>
+              <td colspan="9" class="muted">No webhook delivery history yet</td>
+            </tr>
+          {{end}}
+        </tbody>
+      </table>
+    </section>
+
+    <section class="actions">
+      <h3>Recent webhook deliveries</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>Delivered at</th>
+            <th>Event</th>
+            <th>Status</th>
+            <th>HTTP</th>
+            <th>Duration</th>
+            <th>Source</th>
+            <th>Target</th>
+            <th>Error</th>
+          </tr>
+        </thead>
+        <tbody>
+          {{if .RecentWebhookDeliveries}}
+            {{range .RecentWebhookDeliveries}}
+              <tr>
+                <td>{{.DeliveredAt}}</td>
+                <td>{{.EventName}}</td>
+                <td>{{.Status}}</td>
+                <td>{{.HTTPStatus}}</td>
+                <td>{{.DurationMS}}ms</td>
+                <td>{{.Source}}</td>
+                <td><code>{{.TargetURL}}</code></td>
+                <td>{{.Error}}</td>
+              </tr>
+            {{end}}
+          {{else}}
+            <tr>
+              <td colspan="8" class="muted">No webhook deliveries recorded yet</td>
+            </tr>
+          {{end}}
+        </tbody>
+      </table>
+    </section>
+
+    <section class="actions">
       <h3>Existing API keys</h3>
       <table>
         <thead>

@@ -585,6 +585,106 @@ func TestAPICreateBotHandoff(t *testing.T) {
 	}
 }
 
+func TestAPISettingsWebhookHealthReturnsSummary(t *testing.T) {
+	t.Parallel()
+
+	app := newAPIApp(t)
+	app.Config.WebhookURLs = []string{"https://example.com/hook-a", "https://example.com/hook-b"}
+
+	now := time.Now().UTC()
+	httpStatus := 200
+	failureText := "unexpected webhook status 500"
+
+	_, err := app.Store.InsertWebhookDelivery(context.Background(), db.WebhookDeliveryInput{
+		EventID:     "evt_001",
+		EventName:   "publish.attempt.created",
+		TargetURL:   "https://example.com/hook-a",
+		Status:      "delivered",
+		HTTPStatus:  &httpStatus,
+		Source:      "scheduler",
+		DurationMS:  33,
+		OccurredAt:  now.Add(-1 * time.Minute),
+		DeliveredAt: now.Add(-1 * time.Minute),
+	})
+	if err != nil {
+		t.Fatalf("insert delivered webhook record: %v", err)
+	}
+
+	_, err = app.Store.InsertWebhookDelivery(context.Background(), db.WebhookDeliveryInput{
+		EventID:     "evt_002",
+		EventName:   "post.state.changed",
+		TargetURL:   "https://example.com/hook-a",
+		Status:      "failed",
+		Error:       &failureText,
+		Source:      "server",
+		DurationMS:  91,
+		OccurredAt:  now,
+		DeliveredAt: now,
+	})
+	if err != nil {
+		t.Fatalf("insert failed webhook record: %v", err)
+	}
+
+	request := httptest.NewRequest(http.MethodGet, "/api/v1/settings/webhooks", nil)
+	recorder := httptest.NewRecorder()
+	app.APISettingsWebhookHealth(recorder, request)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d (%s)", recorder.Code, recorder.Body.String())
+	}
+
+	var payload struct {
+		Configured        bool `json:"configured"`
+		TargetsConfigured int  `json:"targets_configured"`
+		Summary           struct {
+			Total          int     `json:"total"`
+			Delivered      int     `json:"delivered"`
+			Failed         int     `json:"failed"`
+			SuccessRatePct float64 `json:"success_rate_pct"`
+			LastSentAt     any     `json:"last_delivery_at"`
+		} `json:"summary"`
+		Targets []struct {
+			TargetURL string `json:"target_url"`
+			Total     int    `json:"total"`
+			Delivered int    `json:"delivered"`
+			Failed    int    `json:"failed"`
+		} `json:"targets"`
+		RecentDeliveries []struct {
+			EventID string `json:"event_id"`
+			Status  string `json:"status"`
+		} `json:"recent_deliveries"`
+	}
+
+	if err := json.Unmarshal(recorder.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("decode payload: %v", err)
+	}
+
+	if !payload.Configured {
+		t.Fatalf("expected configured=true")
+	}
+	if payload.TargetsConfigured != 2 {
+		t.Fatalf("expected 2 configured targets, got %d", payload.TargetsConfigured)
+	}
+	if payload.Summary.Total != 2 || payload.Summary.Delivered != 1 || payload.Summary.Failed != 1 {
+		t.Fatalf("unexpected summary counts: %+v", payload.Summary)
+	}
+	if payload.Summary.SuccessRatePct < 49.9 || payload.Summary.SuccessRatePct > 50.1 {
+		t.Fatalf("expected success rate around 50%%, got %.2f", payload.Summary.SuccessRatePct)
+	}
+	if payload.Summary.LastSentAt == nil {
+		t.Fatalf("expected last_delivery_at to be populated")
+	}
+	if len(payload.Targets) != 1 {
+		t.Fatalf("expected 1 target stat row, got %d", len(payload.Targets))
+	}
+	if payload.Targets[0].TargetURL != "https://example.com/hook-a" {
+		t.Fatalf("unexpected target URL: %+v", payload.Targets[0])
+	}
+	if len(payload.RecentDeliveries) != 2 {
+		t.Fatalf("expected 2 recent deliveries, got %d", len(payload.RecentDeliveries))
+	}
+}
+
 func TestAPIListPostAttemptsIncludesProofFields(t *testing.T) {
 	t.Parallel()
 

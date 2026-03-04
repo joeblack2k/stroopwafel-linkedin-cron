@@ -56,6 +56,6 @@ Out of scope (for this phase):
 
 ## Next focus (Phase 2)
 
-1. Add webhook delivery health panel in Settings.
+1. Add webhook retry dashboard/manual replay tools.
 2. Add richer analytics slices (date/channel filters) without increasing frontend weight.
-3. Add webhook retry queue/attempt history for stronger delivery guarantees.
+3. Add rate-limit aware delivery queue controls for webhook retries.

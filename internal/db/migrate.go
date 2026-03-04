@@ -169,6 +169,28 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_api_idempotency_scope_key
 ON api_idempotency(auth_scope, idempotency_key);
 `,
 	},
+	{
+		name: "009_webhook_deliveries",
+		sql: `
+CREATE TABLE IF NOT EXISTS webhook_deliveries (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    event_id TEXT NOT NULL,
+    event_name TEXT NOT NULL,
+    target_url TEXT NOT NULL,
+    status TEXT NOT NULL CHECK (status IN ('delivered', 'failed')),
+    http_status INTEGER NULL,
+    error TEXT NULL,
+    source TEXT NOT NULL,
+    duration_ms INTEGER NOT NULL DEFAULT 0,
+    occurred_at TEXT NOT NULL,
+    delivered_at TEXT NOT NULL,
+    created_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_webhook_deliveries_recent ON webhook_deliveries(delivered_at DESC, id DESC);
+CREATE INDEX IF NOT EXISTS idx_webhook_deliveries_target ON webhook_deliveries(target_url, delivered_at DESC, id DESC);
+`,
+	},
 }
 
 func Migrate(ctx context.Context, database *sql.DB) (string, error) {

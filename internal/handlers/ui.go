@@ -91,13 +91,46 @@ type PostFormInput struct {
 }
 
 type SettingsPageData struct {
-	Title         string
-	Settings      SettingsStatus
-	APIKeys       []model.APIKey
-	Message       string
-	Error         string
-	CreatedAPIKey string
-	BotHandoff    string
+	Title                   string
+	Settings                SettingsStatus
+	APIKeys                 []model.APIKey
+	WebhookTargetStats      []WebhookTargetStatRow
+	RecentWebhookDeliveries []WebhookDeliveryRow
+	WebhookTotal            int
+	WebhookDelivered        int
+	WebhookFailed           int
+	WebhookSuccessRate      float64
+	Message                 string
+	Error                   string
+	CreatedAPIKey           string
+	BotHandoff              string
+}
+
+type WebhookTargetStatRow struct {
+	TargetURL         string
+	Total             int
+	Delivered         int
+	Failed            int
+	LastStatus        string
+	LastHTTPStatus    string
+	LastError         string
+	LastEventName     string
+	LastDeliveredAt   string
+	FailurePercentage float64
+}
+
+type WebhookDeliveryRow struct {
+	ID          int64
+	EventName   string
+	EventID     string
+	TargetURL   string
+	Status      string
+	HTTPStatus  string
+	Error       string
+	Source      string
+	DurationMS  int64
+	OccurredAt  string
+	DeliveredAt string
 }
 
 type PostViewData struct {
@@ -1015,14 +1048,124 @@ func (a *App) renderSettingsPage(w http.ResponseWriter, r *http.Request, status 
 		return
 	}
 
+	targetStats, err := a.Store.ListWebhookTargetStats(r.Context())
+	if err != nil {
+		http.Error(w, "failed to load webhook health", http.StatusInternalServerError)
+		return
+	}
+
+	recentDeliveries, err := a.Store.ListRecentWebhookDeliveries(r.Context(), 25)
+	if err != nil {
+		http.Error(w, "failed to load webhook deliveries", http.StatusInternalServerError)
+		return
+	}
+
+	webhookTotal := 0
+	webhookDelivered := 0
+	webhookFailed := 0
+	for _, stat := range targetStats {
+		webhookTotal += stat.Total
+		webhookDelivered += stat.Delivered
+		webhookFailed += stat.Failed
+	}
+
+	webhookSuccessRate := 0.0
+	if webhookTotal > 0 {
+		webhookSuccessRate = (float64(webhookDelivered) / float64(webhookTotal)) * 100
+	}
+
+	location := a.Config.Location
+	if location == nil {
+		location = time.UTC
+	}
+
+	targetRows := make([]WebhookTargetStatRow, 0, len(targetStats))
+	for _, item := range targetStats {
+		lastStatus := strings.TrimSpace(item.LastStatus)
+		if lastStatus == "" {
+			lastStatus = "-"
+		}
+
+		lastHTTPStatus := "-"
+		if item.LastHTTPStatus != nil {
+			lastHTTPStatus = fmt.Sprintf("%d", *item.LastHTTPStatus)
+		}
+
+		lastError := "-"
+		if item.LastError != nil && strings.TrimSpace(*item.LastError) != "" {
+			lastError = strings.TrimSpace(*item.LastError)
+		}
+
+		lastEventName := strings.TrimSpace(item.LastEventName)
+		if lastEventName == "" {
+			lastEventName = "-"
+		}
+
+		lastDeliveredAt := "never"
+		if item.LastDeliveredAt != nil {
+			lastDeliveredAt = item.LastDeliveredAt.In(location).Format("2006-01-02 15:04:05")
+		}
+
+		failurePercentage := 0.0
+		if item.Total > 0 {
+			failurePercentage = (float64(item.Failed) / float64(item.Total)) * 100
+		}
+
+		targetRows = append(targetRows, WebhookTargetStatRow{
+			TargetURL:         item.TargetURL,
+			Total:             item.Total,
+			Delivered:         item.Delivered,
+			Failed:            item.Failed,
+			LastStatus:        lastStatus,
+			LastHTTPStatus:    lastHTTPStatus,
+			LastError:         lastError,
+			LastEventName:     lastEventName,
+			LastDeliveredAt:   lastDeliveredAt,
+			FailurePercentage: failurePercentage,
+		})
+	}
+
+	deliveryRows := make([]WebhookDeliveryRow, 0, len(recentDeliveries))
+	for _, item := range recentDeliveries {
+		httpStatus := "-"
+		if item.HTTPStatus != nil {
+			httpStatus = fmt.Sprintf("%d", *item.HTTPStatus)
+		}
+
+		errorText := "-"
+		if item.Error != nil && strings.TrimSpace(*item.Error) != "" {
+			errorText = strings.TrimSpace(*item.Error)
+		}
+
+		deliveryRows = append(deliveryRows, WebhookDeliveryRow{
+			ID:          item.ID,
+			EventName:   item.EventName,
+			EventID:     item.EventID,
+			TargetURL:   item.TargetURL,
+			Status:      item.Status,
+			HTTPStatus:  httpStatus,
+			Error:       errorText,
+			Source:      item.Source,
+			DurationMS:  item.DurationMS,
+			OccurredAt:  item.OccurredAt.In(location).Format("2006-01-02 15:04:05"),
+			DeliveredAt: item.DeliveredAt.In(location).Format("2006-01-02 15:04:05"),
+		})
+	}
+
 	data := SettingsPageData{
-		Title:         "Settings",
-		Settings:      a.settingsStatus(),
-		APIKeys:       sanitizeAPIKeys(apiKeys),
-		Message:       message,
-		Error:         renderErr,
-		CreatedAPIKey: createdAPIKey,
-		BotHandoff:    botHandoff,
+		Title:                   "Settings",
+		Settings:                a.settingsStatus(),
+		APIKeys:                 sanitizeAPIKeys(apiKeys),
+		WebhookTargetStats:      targetRows,
+		RecentWebhookDeliveries: deliveryRows,
+		WebhookTotal:            webhookTotal,
+		WebhookDelivered:        webhookDelivered,
+		WebhookFailed:           webhookFailed,
+		WebhookSuccessRate:      webhookSuccessRate,
+		Message:                 message,
+		Error:                   renderErr,
+		CreatedAPIKey:           createdAPIKey,
+		BotHandoff:              botHandoff,
 	}
 	w.WriteHeader(status)
 	if err := a.Renderer.Render(w, "settings.html", data); err != nil {
@@ -1652,8 +1795,9 @@ func (a *App) buildBotHandoff(apiKey string) string {
 	builder.WriteString("Suggested workflow:\\n")
 	builder.WriteString("1) GET /api/v1/channels\\n")
 	builder.WriteString("2) GET /api/v1/posts\\n")
-	builder.WriteString("3) POST /api/v1/posts for new scheduled posts\\n")
-	builder.WriteString("4) POST /api/v1/posts/{id}/send-now for immediate send\\n\\n")
+	builder.WriteString("3) GET /api/v1/settings/webhooks for delivery health\\n")
+	builder.WriteString("4) POST /api/v1/posts for new scheduled posts\\n")
+	builder.WriteString("5) POST /api/v1/posts/{id}/send-now for immediate send\\n\\n")
 	builder.WriteString("Example curl:\\n")
 	builder.WriteString("curl -H \"X-API-Key: ")
 	builder.WriteString(apiKey)
