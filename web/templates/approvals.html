@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{.Title}} · Stroopwafel: Social Media Manager</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <header class="topbar">
+    <h1>Stroopwafel: Social Media Manager</h1>
+    <nav>
+      <a href="/calendar">Calendar</a>
+      <a href="/posts/new">New Post</a>
+      <a href="/posts/bulk">Bulk</a>
+      <a href="/approvals">Approvals</a>
+      <a href="/analytics">Analytics</a>
+      <a href="/settings/channels">Channels</a>
+      <a href="/settings">Settings</a>
+      <a href="/logout">Logout</a>
+    </nav>
+  </header>
+
+  <main class="container narrow">
+    <h2>Approve & Plan Queue</h2>
+    <p class="muted">Posts created by API-key agents appear here first when “accept before planning” is enabled.</p>
+
+    {{if .Message}}<div class="notice success">{{.Message}}</div>{{end}}
+    {{if .Error}}<div class="notice error">{{.Error}}</div>{{end}}
+
+    <section class="panel">
+      <h3>Pending approvals</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>Planned time</th>
+            <th>Current status</th>
+            <th>Channels</th>
+            <th>Preview</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {{if .Rows}}
+            {{range .Rows}}
+              <tr>
+                <td>#{{.ID}}</td>
+                <td>{{.ScheduledAt}}</td>
+                <td>{{.Status}}</td>
+                <td>{{.ChannelText}}</td>
+                <td>{{.Preview}}</td>
+                <td>
+                  <div class="button-row wrap">
+                    <form method="post" action="/approvals/{{.ID}}/accept-plan" class="inline">
+                      <button type="submit">Accept and plan</button>
+                    </form>
+                    <a class="button ghost" href="/posts/{{.ID}}?return_to=/approvals">View</a>
+                    <a class="button ghost" href="/posts/{{.ID}}/edit?return_to=/approvals">Edit</a>
+                  </div>
+                </td>
+              </tr>
+            {{end}}
+          {{else}}
+            <tr>
+              <td colspan="6" class="muted">No posts waiting for approval.</td>
+            </tr>
+          {{end}}
+        </tbody>
+      </table>
+    </section>
+  </main>
+</body>
+</html>

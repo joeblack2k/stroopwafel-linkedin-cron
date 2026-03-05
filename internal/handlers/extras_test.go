@@ -398,12 +398,18 @@ func TestAPIListChannelsIncludesSecretPreviewMetadata(t *testing.T) {
 
 func performJSONHandlerRequest(t *testing.T, method, path string, payload any, handler func(http.ResponseWriter, *http.Request)) *httptest.ResponseRecorder {
 	t.Helper()
+	return performJSONHandlerRequestWithContext(t, context.Background(), method, path, payload, handler)
+}
+
+func performJSONHandlerRequestWithContext(t *testing.T, ctx context.Context, method, path string, payload any, handler func(http.ResponseWriter, *http.Request)) *httptest.ResponseRecorder {
+	t.Helper()
 	body, err := json.Marshal(payload)
 	if err != nil {
 		t.Fatalf("marshal payload: %v", err)
 	}
 	request := httptest.NewRequest(method, path, bytes.NewReader(body))
 	request.Header.Set("Content-Type", "application/json")
+	request = request.WithContext(ctx)
 	if strings.HasPrefix(path, "/api/v1/posts/") {
 		parts := strings.Split(strings.TrimPrefix(path, "/api/v1/posts/"), "/")
 		if len(parts) > 0 && parts[0] != "" {
@@ -1208,5 +1214,101 @@ func TestAPIOpenAPI(t *testing.T) {
 	}
 	if !strings.Contains(recorder.Body.String(), "openapi:") {
 		t.Fatalf("expected openapi yaml in response")
+	}
+}
+
+func TestAPICreatePostAgentRequiresApprovalBeforePlanning(t *testing.T) {
+	t.Parallel()
+
+	app := newAPIApp(t)
+	app.Config.AcceptBeforePlanning = true
+	channel := mustCreateDryRunChannel(t, app.Store)
+
+	dueAt := time.Now().UTC().Add(2 * time.Hour).Format(time.RFC3339)
+	payload := map[string]any{
+		"text":         "agent scheduled post",
+		"status":       "scheduled",
+		"scheduled_at": dueAt,
+		"channel_ids":  []int64{channel.ID},
+	}
+
+	ctx := context.WithValue(context.Background(), contextKeyAuthMethod, "api-key")
+	ctx = context.WithValue(ctx, contextKeyAPIKeyName, "agent-bot")
+
+	recorder := performJSONHandlerRequestWithContext(t, ctx, http.MethodPost, "/api/v1/posts", payload, app.APICreatePost)
+	if recorder.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d (%s)", recorder.Code, recorder.Body.String())
+	}
+
+	var response struct {
+		Post struct {
+			ID              int64  `json:"id"`
+			Status          string `json:"status"`
+			ApprovalPending bool   `json:"approval_pending"`
+		} `json:"post"`
+	}
+	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
+		t.Fatalf("decode create response: %v", err)
+	}
+	if response.Post.Status != string(model.StatusDraft) {
+		t.Fatalf("expected draft status for agent-created scheduled post, got %q", response.Post.Status)
+	}
+	if !response.Post.ApprovalPending {
+		t.Fatal("expected approval_pending=true for agent-created scheduled post")
+	}
+
+	created, err := app.Store.GetPost(context.Background(), response.Post.ID)
+	if err != nil {
+		t.Fatalf("reload created post: %v", err)
+	}
+	if created.Status != model.StatusDraft {
+		t.Fatalf("expected stored status draft, got %s", created.Status)
+	}
+	if !created.ApprovalPending {
+		t.Fatal("expected stored approval_pending=true")
+	}
+	if created.ScheduledAt == nil {
+		t.Fatal("expected scheduled_at to be preserved while waiting approval")
+	}
+}
+
+func TestAPICreatePostBasicAuthSkipsApprovalQueue(t *testing.T) {
+	t.Parallel()
+
+	app := newAPIApp(t)
+	app.Config.AcceptBeforePlanning = true
+	channel := mustCreateDryRunChannel(t, app.Store)
+
+	dueAt := time.Now().UTC().Add(2 * time.Hour).Format(time.RFC3339)
+	payload := map[string]any{
+		"text":         "human scheduled post",
+		"status":       "scheduled",
+		"scheduled_at": dueAt,
+		"channel_ids":  []int64{channel.ID},
+	}
+
+	ctx := context.WithValue(context.Background(), contextKeyAuthMethod, "basic")
+	ctx = context.WithValue(ctx, contextKeyAuthUser, "admin")
+
+	recorder := performJSONHandlerRequestWithContext(t, ctx, http.MethodPost, "/api/v1/posts", payload, app.APICreatePost)
+	if recorder.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d (%s)", recorder.Code, recorder.Body.String())
+	}
+
+	var response struct {
+		Post struct {
+			ID              int64  `json:"id"`
+			Status          string `json:"status"`
+			ApprovalPending bool   `json:"approval_pending"`
+		} `json:"post"`
+	}
+	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
+		t.Fatalf("decode create response: %v", err)
+	}
+	if response.Post.Status != string(model.StatusScheduled) {
+		t.Fatalf("expected scheduled status for basic auth, got %q", response.Post.Status)
+	}
+	if response.Post.ApprovalPending {
+		t.Fatal("expected approval_pending=false for basic auth")
 	}
 }

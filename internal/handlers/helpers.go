@@ -49,26 +49,27 @@ const (
 )
 
 type SettingsStatus struct {
-	BasicAuthConfigured bool   `json:"basic_auth_configured"`
-	MaskedAuthUser      string `json:"masked_auth_user"`
-	MaskedAuthPass      string `json:"masked_auth_pass"`
-	StaticAPIKeysCount  int    `json:"static_api_keys_count"`
-	PublisherMode       string `json:"publisher_mode"`
-	RequestedMode       string `json:"requested_mode"`
-	LinkedInConfigured  bool   `json:"linkedin_configured"`
-	MaskedLinkedInToken string `json:"masked_linkedin_token"`
-	MaskedAuthorURN     string `json:"masked_author_urn"`
-	FacebookConfigured  bool   `json:"facebook_configured"`
-	MaskedFacebookToken string `json:"masked_facebook_token"`
-	MaskedFacebookPage  string `json:"masked_facebook_page_id"`
-	DataDir             string `json:"data_dir"`
-	ConfigPath          string `json:"config_path"`
-	DBPath              string `json:"db_path"`
-	Timezone            string `json:"timezone"`
-	MigrationStatus     string `json:"migration_status"`
-	WebhookConfigured   bool   `json:"webhook_configured"`
-	WebhookTargets      int    `json:"webhook_targets"`
-	MaskedWebhookKey    string `json:"masked_webhook_secret"`
+	BasicAuthConfigured  bool   `json:"basic_auth_configured"`
+	MaskedAuthUser       string `json:"masked_auth_user"`
+	MaskedAuthPass       string `json:"masked_auth_pass"`
+	StaticAPIKeysCount   int    `json:"static_api_keys_count"`
+	AcceptBeforePlanning bool   `json:"accept_before_planning"`
+	PublisherMode        string `json:"publisher_mode"`
+	RequestedMode        string `json:"requested_mode"`
+	LinkedInConfigured   bool   `json:"linkedin_configured"`
+	MaskedLinkedInToken  string `json:"masked_linkedin_token"`
+	MaskedAuthorURN      string `json:"masked_author_urn"`
+	FacebookConfigured   bool   `json:"facebook_configured"`
+	MaskedFacebookToken  string `json:"masked_facebook_token"`
+	MaskedFacebookPage   string `json:"masked_facebook_page_id"`
+	DataDir              string `json:"data_dir"`
+	ConfigPath           string `json:"config_path"`
+	DBPath               string `json:"db_path"`
+	Timezone             string `json:"timezone"`
+	MigrationStatus      string `json:"migration_status"`
+	WebhookConfigured    bool   `json:"webhook_configured"`
+	WebhookTargets       int    `json:"webhook_targets"`
+	MaskedWebhookKey     string `json:"masked_webhook_secret"`
 }
 
 type paginationResponse struct {
@@ -226,26 +227,27 @@ func sanitizeAPIKeys(items []model.APIKey) []model.APIKey {
 
 func (a *App) settingsStatus() SettingsStatus {
 	return SettingsStatus{
-		BasicAuthConfigured: a.Config.BasicAuthConfigured(),
-		MaskedAuthUser:      config.MaskSecret(a.Config.BasicAuthUser),
-		MaskedAuthPass:      config.MaskSecret(a.Config.BasicAuthPass),
-		StaticAPIKeysCount:  len(a.Config.StaticAPIKeys),
-		PublisherMode:       a.ActivePublisher,
-		RequestedMode:       a.RequestedPublisher,
-		LinkedInConfigured:  a.LinkedInConfigured,
-		MaskedLinkedInToken: config.MaskSecret(a.Config.LinkedInToken),
-		MaskedAuthorURN:     config.MaskSecret(a.Config.LinkedInAuthorURN),
-		FacebookConfigured:  a.FacebookConfigured,
-		MaskedFacebookToken: config.MaskSecret(a.Config.FacebookPageToken),
-		MaskedFacebookPage:  config.MaskSecret(a.Config.FacebookPageID),
-		DataDir:             a.Config.DataDir,
-		ConfigPath:          a.Config.ConfigPath,
-		DBPath:              a.Config.DBPath,
-		Timezone:            a.Config.Timezone,
-		MigrationStatus:     a.MigrationStatus,
-		WebhookConfigured:   len(a.Config.WebhookURLs) > 0,
-		WebhookTargets:      len(a.Config.WebhookURLs),
-		MaskedWebhookKey:    config.MaskSecret(a.Config.WebhookSecret),
+		BasicAuthConfigured:  a.Config.BasicAuthConfigured(),
+		MaskedAuthUser:       config.MaskSecret(a.Config.BasicAuthUser),
+		MaskedAuthPass:       config.MaskSecret(a.Config.BasicAuthPass),
+		StaticAPIKeysCount:   len(a.Config.StaticAPIKeys),
+		AcceptBeforePlanning: a.Config.AcceptBeforePlanning,
+		PublisherMode:        a.ActivePublisher,
+		RequestedMode:        a.RequestedPublisher,
+		LinkedInConfigured:   a.LinkedInConfigured,
+		MaskedLinkedInToken:  config.MaskSecret(a.Config.LinkedInToken),
+		MaskedAuthorURN:      config.MaskSecret(a.Config.LinkedInAuthorURN),
+		FacebookConfigured:   a.FacebookConfigured,
+		MaskedFacebookToken:  config.MaskSecret(a.Config.FacebookPageToken),
+		MaskedFacebookPage:   config.MaskSecret(a.Config.FacebookPageID),
+		DataDir:              a.Config.DataDir,
+		ConfigPath:           a.Config.ConfigPath,
+		DBPath:               a.Config.DBPath,
+		Timezone:             a.Config.Timezone,
+		MigrationStatus:      a.MigrationStatus,
+		WebhookConfigured:    len(a.Config.WebhookURLs) > 0,
+		WebhookTargets:       len(a.Config.WebhookURLs),
+		MaskedWebhookKey:     config.MaskSecret(a.Config.WebhookSecret),
 	}
 }
 

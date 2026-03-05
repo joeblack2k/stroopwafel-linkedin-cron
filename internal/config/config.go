@@ -11,42 +11,44 @@ import (
 )
 
 type Config struct {
-	Addr              string
-	Env               string
-	BaseURL           string
-	DataDir           string
-	ConfigPath        string
-	DBPath            string
-	BasicAuthUser     string
-	BasicAuthPass     string
-	StaticAPIKeys     map[string]string
-	SessionSecure     bool
-	Timezone          string
-	Location          *time.Location
-	PublisherMode     string
-	LinkedInToken     string
-	LinkedInAuthorURN string
-	LinkedInAPIBase   string
-	FacebookPageToken string
-	FacebookPageID    string
-	FacebookAPIBase   string
-	WebhookURLs       []string
-	WebhookSecret     string
+	Addr                 string
+	Env                  string
+	BaseURL              string
+	DataDir              string
+	ConfigPath           string
+	DBPath               string
+	BasicAuthUser        string
+	BasicAuthPass        string
+	StaticAPIKeys        map[string]string
+	AcceptBeforePlanning bool
+	SessionSecure        bool
+	Timezone             string
+	Location             *time.Location
+	PublisherMode        string
+	LinkedInToken        string
+	LinkedInAuthorURN    string
+	LinkedInAPIBase      string
+	FacebookPageToken    string
+	FacebookPageID       string
+	FacebookAPIBase      string
+	WebhookURLs          []string
+	WebhookSecret        string
 }
 
 type PersistedConfig struct {
-	Version           int               `json:"version"`
-	BasicAuthUser     string            `json:"basic_auth_user"`
-	BasicAuthPass     string            `json:"basic_auth_pass"`
-	StaticAPIKeys     map[string]string `json:"static_api_keys,omitempty"`
-	Timezone          string            `json:"timezone"`
-	PublisherMode     string            `json:"publisher_mode"`
-	LinkedInToken     string            `json:"linkedin_access_token,omitempty"`
-	LinkedInAuthorURN string            `json:"linkedin_author_urn,omitempty"`
-	LinkedInAPIBase   string            `json:"linkedin_api_base_url,omitempty"`
-	FacebookPageToken string            `json:"facebook_page_access_token,omitempty"`
-	FacebookPageID    string            `json:"facebook_page_id,omitempty"`
-	FacebookAPIBase   string            `json:"facebook_api_base_url,omitempty"`
+	Version              int               `json:"version"`
+	BasicAuthUser        string            `json:"basic_auth_user"`
+	BasicAuthPass        string            `json:"basic_auth_pass"`
+	StaticAPIKeys        map[string]string `json:"static_api_keys,omitempty"`
+	AcceptBeforePlanning *bool             `json:"accept_before_planning,omitempty"`
+	Timezone             string            `json:"timezone"`
+	PublisherMode        string            `json:"publisher_mode"`
+	LinkedInToken        string            `json:"linkedin_access_token,omitempty"`
+	LinkedInAuthorURN    string            `json:"linkedin_author_urn,omitempty"`
+	LinkedInAPIBase      string            `json:"linkedin_api_base_url,omitempty"`
+	FacebookPageToken    string            `json:"facebook_page_access_token,omitempty"`
+	FacebookPageID       string            `json:"facebook_page_id,omitempty"`
+	FacebookAPIBase      string            `json:"facebook_api_base_url,omitempty"`
 }
 
 const persistedConfigVersion = 1
@@ -80,30 +82,44 @@ func Load() (Config, error) {
 	}
 
 	cfg := Config{
-		Addr:              getEnv("APP_ADDR", ":8080"),
-		Env:               getEnv("APP_ENV", "development"),
-		BaseURL:           getEnv("APP_BASE_URL", "http://localhost:8080"),
-		DataDir:           dataDir,
-		ConfigPath:        configPath,
-		DBPath:            dbPath,
-		BasicAuthUser:     persisted.BasicAuthUser,
-		BasicAuthPass:     persisted.BasicAuthPass,
-		StaticAPIKeys:     persisted.StaticAPIKeys,
-		SessionSecure:     getEnvBool("APP_SESSION_SECURE", false),
-		Timezone:          timezone,
-		Location:          location,
-		PublisherMode:     normalizeMode(persisted.PublisherMode),
-		LinkedInToken:     strings.TrimSpace(persisted.LinkedInToken),
-		LinkedInAuthorURN: strings.TrimSpace(persisted.LinkedInAuthorURN),
-		LinkedInAPIBase:   defaultIfEmpty(strings.TrimSpace(persisted.LinkedInAPIBase), "https://api.linkedin.com"),
-		FacebookPageToken: strings.TrimSpace(persisted.FacebookPageToken),
-		FacebookPageID:    strings.TrimSpace(persisted.FacebookPageID),
-		FacebookAPIBase:   strings.TrimRight(defaultIfEmpty(strings.TrimSpace(persisted.FacebookAPIBase), "https://graph.facebook.com/v22.0"), "/"),
-		WebhookURLs:       parseWebhookURLs(os.Getenv("APP_WEBHOOK_URLS")),
-		WebhookSecret:     strings.TrimSpace(os.Getenv("APP_WEBHOOK_SECRET")),
+		Addr:                 getEnv("APP_ADDR", ":8080"),
+		Env:                  getEnv("APP_ENV", "development"),
+		BaseURL:              getEnv("APP_BASE_URL", "http://localhost:8080"),
+		DataDir:              dataDir,
+		ConfigPath:           configPath,
+		DBPath:               dbPath,
+		BasicAuthUser:        persisted.BasicAuthUser,
+		BasicAuthPass:        persisted.BasicAuthPass,
+		StaticAPIKeys:        persisted.StaticAPIKeys,
+		AcceptBeforePlanning: defaultAcceptBeforePlanning(persisted.AcceptBeforePlanning),
+		SessionSecure:        getEnvBool("APP_SESSION_SECURE", false),
+		Timezone:             timezone,
+		Location:             location,
+		PublisherMode:        normalizeMode(persisted.PublisherMode),
+		LinkedInToken:        strings.TrimSpace(persisted.LinkedInToken),
+		LinkedInAuthorURN:    strings.TrimSpace(persisted.LinkedInAuthorURN),
+		LinkedInAPIBase:      defaultIfEmpty(strings.TrimSpace(persisted.LinkedInAPIBase), "https://api.linkedin.com"),
+		FacebookPageToken:    strings.TrimSpace(persisted.FacebookPageToken),
+		FacebookPageID:       strings.TrimSpace(persisted.FacebookPageID),
+		FacebookAPIBase:      strings.TrimRight(defaultIfEmpty(strings.TrimSpace(persisted.FacebookAPIBase), "https://graph.facebook.com/v22.0"), "/"),
+		WebhookURLs:          parseWebhookURLs(os.Getenv("APP_WEBHOOK_URLS")),
+		WebhookSecret:        strings.TrimSpace(os.Getenv("APP_WEBHOOK_SECRET")),
 	}
 
 	return cfg, nil
+}
+
+func UpdateAcceptBeforePlanning(path string, enabled bool) error {
+	persisted, err := readPersistedConfig(path)
+	if err != nil {
+		return fmt.Errorf("read config file %q: %w", path, err)
+	}
+	persisted = normalizePersistedConfig(persisted)
+	persisted.AcceptBeforePlanning = boolPointer(enabled)
+	if err := writePersistedConfig(path, persisted); err != nil {
+		return fmt.Errorf("write config file %q: %w", path, err)
+	}
+	return nil
 }
 
 func (c Config) BasicAuthConfigured() bool {
@@ -171,18 +187,19 @@ func writePersistedConfig(path string, persisted PersistedConfig) error {
 
 func persistedConfigFromEnv() PersistedConfig {
 	return PersistedConfig{
-		Version:           persistedConfigVersion,
-		BasicAuthUser:     getEnv("APP_BASIC_AUTH_USER", "admin"),
-		BasicAuthPass:     getEnv("APP_BASIC_AUTH_PASS", "admin"),
-		StaticAPIKeys:     parseStaticAPIKeys(os.Getenv("APP_STATIC_API_KEYS")),
-		Timezone:          getEnv("APP_TIMEZONE", "UTC"),
-		PublisherMode:     normalizeMode(getEnv("PUBLISHER_MODE", "dry-run")),
-		LinkedInToken:     strings.TrimSpace(os.Getenv("LINKEDIN_ACCESS_TOKEN")),
-		LinkedInAuthorURN: strings.TrimSpace(os.Getenv("LINKEDIN_AUTHOR_URN")),
-		LinkedInAPIBase:   getEnv("LINKEDIN_API_BASE_URL", "https://api.linkedin.com"),
-		FacebookPageToken: strings.TrimSpace(os.Getenv("FACEBOOK_PAGE_ACCESS_TOKEN")),
-		FacebookPageID:    strings.TrimSpace(os.Getenv("FACEBOOK_PAGE_ID")),
-		FacebookAPIBase:   strings.TrimRight(getEnv("FACEBOOK_API_BASE_URL", "https://graph.facebook.com/v22.0"), "/"),
+		Version:              persistedConfigVersion,
+		BasicAuthUser:        getEnv("APP_BASIC_AUTH_USER", "admin"),
+		BasicAuthPass:        getEnv("APP_BASIC_AUTH_PASS", "admin"),
+		StaticAPIKeys:        parseStaticAPIKeys(os.Getenv("APP_STATIC_API_KEYS")),
+		AcceptBeforePlanning: boolPointer(getEnvBool("APP_ACCEPT_BEFORE_PLANNING", true)),
+		Timezone:             getEnv("APP_TIMEZONE", "UTC"),
+		PublisherMode:        normalizeMode(getEnv("PUBLISHER_MODE", "dry-run")),
+		LinkedInToken:        strings.TrimSpace(os.Getenv("LINKEDIN_ACCESS_TOKEN")),
+		LinkedInAuthorURN:    strings.TrimSpace(os.Getenv("LINKEDIN_AUTHOR_URN")),
+		LinkedInAPIBase:      getEnv("LINKEDIN_API_BASE_URL", "https://api.linkedin.com"),
+		FacebookPageToken:    strings.TrimSpace(os.Getenv("FACEBOOK_PAGE_ACCESS_TOKEN")),
+		FacebookPageID:       strings.TrimSpace(os.Getenv("FACEBOOK_PAGE_ID")),
+		FacebookAPIBase:      strings.TrimRight(getEnv("FACEBOOK_API_BASE_URL", "https://graph.facebook.com/v22.0"), "/"),
 	}
 }
 
@@ -195,6 +212,9 @@ func applyPersistedEnvOverrides(persisted PersistedConfig) PersistedConfig {
 	}
 	if value, ok := lookupEnvTrimmed("APP_TIMEZONE"); ok {
 		persisted.Timezone = value
+	}
+	if value, ok := lookupEnvBool("APP_ACCEPT_BEFORE_PLANNING"); ok {
+		persisted.AcceptBeforePlanning = boolPointer(value)
 	}
 	if value, ok := lookupEnvTrimmed("PUBLISHER_MODE"); ok {
 		persisted.PublisherMode = value
@@ -228,6 +248,9 @@ func normalizePersistedConfig(persisted PersistedConfig) PersistedConfig {
 	persisted.BasicAuthUser = defaultIfEmpty(strings.TrimSpace(persisted.BasicAuthUser), "admin")
 	persisted.BasicAuthPass = defaultIfEmpty(strings.TrimSpace(persisted.BasicAuthPass), "admin")
 	persisted.Timezone = defaultIfEmpty(strings.TrimSpace(persisted.Timezone), "UTC")
+	if persisted.AcceptBeforePlanning == nil {
+		persisted.AcceptBeforePlanning = boolPointer(true)
+	}
 	persisted.PublisherMode = normalizeMode(strings.TrimSpace(persisted.PublisherMode))
 	persisted.LinkedInToken = strings.TrimSpace(persisted.LinkedInToken)
 	persisted.LinkedInAuthorURN = strings.TrimSpace(persisted.LinkedInAuthorURN)
@@ -239,6 +262,13 @@ func normalizePersistedConfig(persisted PersistedConfig) PersistedConfig {
 		persisted.StaticAPIKeys = nil
 	}
 	return persisted
+}
+
+func defaultAcceptBeforePlanning(value *bool) bool {
+	if value == nil {
+		return true
+	}
+	return *value
 }
 
 func lookupEnvTrimmed(key string) (string, bool) {
@@ -253,11 +283,35 @@ func lookupEnvTrimmed(key string) (string, bool) {
 	return trimmed, true
 }
 
+func lookupEnvBool(key string) (bool, bool) {
+	value, ok := os.LookupEnv(key)
+	if !ok {
+		return false, false
+	}
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return false, false
+	}
+	switch strings.ToLower(trimmed) {
+	case "1", "true", "yes", "on":
+		return true, true
+	case "0", "false", "no", "off":
+		return false, true
+	default:
+		return false, false
+	}
+}
+
 func defaultIfEmpty(value, fallback string) string {
 	if strings.TrimSpace(value) == "" {
 		return fallback
 	}
 	return value
+}
+
+func boolPointer(value bool) *bool {
+	copyValue := value
+	return &copyValue
 }
 
 func getEnv(key string, fallback string) string {

@@ -100,6 +100,7 @@ Main settings live in `/data/config.json`. Example:
   "version": 1,
   "basic_auth_user": "admin",
   "basic_auth_pass": "admin",
+  "accept_before_planning": true,
   "timezone": "UTC",
   "publisher_mode": "dry-run",
   "static_api_keys": {
@@ -204,13 +205,15 @@ API keys are stored hashed in SQLite.
 - `POST /posts/{id}`
 - `POST /posts/{id}/delete`
 - `POST /posts/{id}/send-now`
-- `POST /posts/{id}/send-and-delete`
 - `POST /posts/{id}/reschedule`
 - `GET /posts/{id}/history`
 - `GET /posts/bulk`
 - `POST /posts/bulk/channels`
 - `POST /posts/bulk/send-now`
+- `GET /approvals`
+- `POST /approvals/{id}/accept-plan`
 - `GET /settings`
+- `POST /settings/approval-policy`
 - `GET /settings/webhooks/replays`
 - `POST /settings/webhooks/replays/replay-failed`
 - `POST /settings/webhooks/replays/{id}/replay`

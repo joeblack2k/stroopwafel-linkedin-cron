@@ -79,6 +79,7 @@ func TestLoadCreatesConfigFileFromEnv(t *testing.T) {
 	t.Setenv("APP_BASIC_AUTH_USER", "alice")
 	t.Setenv("APP_BASIC_AUTH_PASS", "secret")
 	t.Setenv("APP_TIMEZONE", "UTC")
+	t.Setenv("APP_ACCEPT_BEFORE_PLANNING", "true")
 	t.Setenv("APP_STATIC_API_KEYS", "bot:swak_123")
 	t.Setenv("PUBLISHER_MODE", "dry-run")
 
@@ -95,6 +96,9 @@ func TestLoadCreatesConfigFileFromEnv(t *testing.T) {
 	if got := cfg.StaticAPIKeys["swak_123"]; got != "bot" {
 		t.Fatalf("expected static api key bot, got %q", got)
 	}
+	if !cfg.AcceptBeforePlanning {
+		t.Fatal("expected accept_before_planning=true from env")
+	}
 
 	if _, err := os.Stat(configPath); err != nil {
 		t.Fatalf("expected config file to be created: %v", err)
@@ -110,6 +114,7 @@ func TestLoadReadsPersistedConfig(t *testing.T) {
   "version": 1,
   "basic_auth_user": "stored-user",
   "basic_auth_pass": "stored-pass",
+  "accept_before_planning": false,
   "timezone": "UTC",
   "publisher_mode": "facebook-page",
   "static_api_keys": {
@@ -148,8 +153,45 @@ func TestLoadReadsPersistedConfig(t *testing.T) {
 	if got := cfg.StaticAPIKeys["swak_token"]; got != "bot-stored" {
 		t.Fatalf("expected static key name bot-stored, got %q", got)
 	}
+	if cfg.AcceptBeforePlanning {
+		t.Fatal("expected accept_before_planning=false from persisted config")
+	}
 	if !cfg.FacebookConfigured() {
 		t.Fatal("expected facebook config from persisted config")
+	}
+}
+
+func TestUpdateAcceptBeforePlanning(t *testing.T) {
+	t.Parallel()
+
+	dataDir := t.TempDir()
+	configPath := filepath.Join(dataDir, "config.json")
+
+	persisted := `{
+  "version": 1,
+  "basic_auth_user": "stored-user",
+  "basic_auth_pass": "stored-pass",
+  "timezone": "UTC",
+  "publisher_mode": "dry-run"
+}
+`
+	if err := os.WriteFile(configPath, []byte(persisted), 0o600); err != nil {
+		t.Fatalf("write config file: %v", err)
+	}
+
+	if err := UpdateAcceptBeforePlanning(configPath, false); err != nil {
+		t.Fatalf("update accept_before_planning: %v", err)
+	}
+
+	loaded, err := readPersistedConfig(configPath)
+	if err != nil {
+		t.Fatalf("read config file: %v", err)
+	}
+	if loaded.AcceptBeforePlanning == nil {
+		t.Fatal("expected accept_before_planning to be set")
+	}
+	if *loaded.AcceptBeforePlanning {
+		t.Fatal("expected accept_before_planning=false")
 	}
 }
 

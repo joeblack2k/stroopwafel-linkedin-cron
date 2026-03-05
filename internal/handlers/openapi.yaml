@@ -834,12 +834,13 @@ components:
           type: string
     Post:
       type: object
-      required: [id, text, status, created_at, updated_at, fail_count]
+      required: [id, text, status, approval_pending, created_at, updated_at, fail_count]
       properties:
         id: { type: integer }
         scheduled_at: { type: string, format: date-time, nullable: true }
         text: { type: string }
         status: { type: string, enum: [draft, scheduled, sent, failed] }
+        approval_pending: { type: boolean }
         created_at: { type: string, format: date-time }
         updated_at: { type: string, format: date-time }
         sent_at: { type: string, format: date-time, nullable: true }

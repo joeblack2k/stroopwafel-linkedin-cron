@@ -177,6 +177,7 @@ func (s *Store) CountPlannedPostsForChannelBetween(ctx context.Context, channelI
 	 INNER JOIN post_channels pc ON pc.post_id = p.id
 	 WHERE pc.channel_id = ?
 	   AND p.status IN ('scheduled', 'sent')
+	   AND p.approval_pending = 0
 	   AND p.scheduled_at IS NOT NULL
 	   AND p.scheduled_at >= ?
 	   AND p.scheduled_at < ?`

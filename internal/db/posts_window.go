@@ -13,9 +13,10 @@ func (s *Store) ListScheduledPostsInWindow(ctx context.Context, start, end time.
 		start, end = end, start
 	}
 
-	query := `SELECT id, scheduled_at, text, status, created_at, updated_at, sent_at, fail_count, last_error, media_url, next_retry_at
+	query := `SELECT id, scheduled_at, text, status, approval_pending, created_at, updated_at, sent_at, fail_count, last_error, media_url, next_retry_at
 	 FROM posts
 	 WHERE status = 'scheduled'
+	   AND approval_pending = 0
 	   AND scheduled_at IS NOT NULL
 	   AND scheduled_at >= ?
 	   AND scheduled_at <= ?`

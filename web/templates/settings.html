@@ -14,6 +14,8 @@
       <a href="/calendar">Calendar</a>
       <a href="/posts/new">New Post</a>
       <a href="/posts/bulk">Bulk</a>
+      <a href="/approvals">Approvals</a>
+      
       <a href="/analytics">Analytics</a>
       <a href="/settings/channels">Channels</a>
       <a href="/settings">Settings</a>
@@ -75,6 +77,21 @@
     </section>
 
     <section class="actions">
+      <h3>Approval policy</h3>
+      <div class="panel stack">
+        <form method="post" action="/settings/approval-policy" class="stack">
+          <label class="checkbox-row">
+            <input type="checkbox" name="accept_before_planning" {{if .Settings.AcceptBeforePlanning}}checked{{end}}>
+            <span>Accept before planning (default on): API-key agent posts must be approved before they appear in calendar/schedule.</span>
+          </label>
+          <div class="button-row">
+            <button type="submit">Save approval policy</button>
+          </div>
+        </form>
+      </div>
+    </section>
+
+    <section class="actions">
       <h3>Runtime status</h3>
       <table>
         <tbody>
@@ -82,6 +99,7 @@
           <tr><th>Auth user</th><td>{{.Settings.MaskedAuthUser}}</td></tr>
           <tr><th>Auth password</th><td>{{.Settings.MaskedAuthPass}}</td></tr>
           <tr><th>Static API keys</th><td>{{.Settings.StaticAPIKeysCount}}</td></tr>
+          <tr><th>Accept before planning</th><td>{{.Settings.AcceptBeforePlanning}}</td></tr>
           <tr><th>Publisher mode (active)</th><td>{{.Settings.PublisherMode}}</td></tr>
           <tr><th>Publisher mode (requested)</th><td>{{.Settings.RequestedMode}}</td></tr>
           <tr><th>LinkedIn configured</th><td>{{.Settings.LinkedInConfigured}}</td></tr>

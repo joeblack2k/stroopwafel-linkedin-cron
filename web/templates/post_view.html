@@ -13,6 +13,7 @@
       <a href="/calendar">Calendar</a>
       <a href="/posts/new?return_to={{.ReturnTo}}">New Post</a>
       <a href="/posts/bulk">Bulk</a>
+      <a href="/approvals">Approvals</a>
       <a href="/settings/channels">Channels</a>
       <a href="/settings">Settings</a>
           <a href="/logout">Logout</a>
@@ -57,9 +58,9 @@
             <input type="hidden" name="return_to" value="/posts/{{.Post.ID}}?return_to={{.ReturnTo}}">
             <button type="submit">send now</button>
           </form>
-          <form method="post" action="/posts/{{.Post.ID}}/send-and-delete" class="inline">
+          <form method="post" action="/posts/{{.Post.ID}}/delete" class="inline">
             <input type="hidden" name="return_to" value="{{.ReturnTo}}">
-            <button type="submit" class="danger">send and delete</button>
+            <button type="submit" class="danger">delete</button>
           </form>
         {{end}}
       </div>

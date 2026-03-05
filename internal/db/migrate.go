@@ -296,6 +296,14 @@ CREATE INDEX IF NOT EXISTS idx_content_templates_updated ON content_templates(up
 CREATE INDEX IF NOT EXISTS idx_content_templates_channel_active ON content_templates(channel_type, is_active, updated_at DESC, id DESC);
 `,
 	},
+	{
+		name: "014_post_approvals",
+		sql: `
+ALTER TABLE posts ADD COLUMN approval_pending INTEGER NOT NULL DEFAULT 0;
+
+CREATE INDEX IF NOT EXISTS idx_posts_approval_pending ON posts(approval_pending, created_at DESC, id DESC);
+`,
+	},
 }
 
 func Migrate(ctx context.Context, database *sql.DB) (string, error) {

@@ -148,6 +148,7 @@ func registerProtectedRoutes(mux *http.ServeMux, uiAuth func(http.Handler) http.
 	mux.Handle("GET /media/", mediaHandler)
 
 	mux.Handle("GET /calendar", uiAuth(http.HandlerFunc(app.Calendar)))
+	mux.Handle("GET /approvals", uiAuth(http.HandlerFunc(app.Approvals)))
 	mux.Handle("GET /analytics", uiAuth(http.HandlerFunc(app.Analytics)))
 	mux.Handle("GET /analytics/data", uiAuth(http.HandlerFunc(app.AnalyticsData)))
 	mux.Handle("GET /posts/new", uiAuth(http.HandlerFunc(app.NewPost)))
@@ -165,6 +166,8 @@ func registerProtectedRoutes(mux *http.ServeMux, uiAuth func(http.Handler) http.
 	mux.Handle("POST /posts/{id}/send-and-delete", uiAuth(http.HandlerFunc(app.SendAndDeletePost)))
 	mux.Handle("POST /posts/{id}/reschedule", uiAuth(http.HandlerFunc(app.ReschedulePost)))
 	mux.Handle("GET /settings", uiAuth(http.HandlerFunc(app.Settings)))
+	mux.Handle("POST /settings/approval-policy", uiAuth(http.HandlerFunc(app.UpdateApprovalPolicy)))
+	mux.Handle("POST /approvals/{id}/accept-plan", uiAuth(http.HandlerFunc(app.AcceptAndPlanPost)))
 	mux.Handle("GET /settings/webhooks/replays", uiAuth(http.HandlerFunc(app.WebhookReplays)))
 	mux.Handle("POST /settings/webhooks/replays/replay-failed", uiAuth(http.HandlerFunc(app.ReplayFailedWebhooks)))
 	mux.Handle("POST /settings/webhooks/replays/{id}/replay", uiAuth(http.HandlerFunc(app.ReplayWebhook)))

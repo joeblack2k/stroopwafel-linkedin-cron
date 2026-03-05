@@ -16,6 +16,7 @@ This runbook is for agents that operate the API while we close Postiz parity gap
    - `POST /api/v1/channels/{id}/rotate-credentials`
 2. **Create scheduled post with channels**
    - `POST /api/v1/posts` with `status=scheduled`, `scheduled_at`, `channel_ids`
+   - If `accept_before_planning=true` and auth is API key, scheduled posts are stored as draft with `approval_pending=true` until approved in UI (`/approvals`).
 3. **Operate delivery**
    - `POST /api/v1/posts/{id}/send-now`
    - `POST /api/v1/posts/{id}/reschedule`

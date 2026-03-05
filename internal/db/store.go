@@ -27,12 +27,14 @@ type Store struct {
 }
 
 type PostInput struct {
-	ScheduledAt  *time.Time
-	Text         string
-	Status       model.PostStatus
-	MediaType    *string
-	MediaTypeSet bool
-	MediaURL     *string
+	ScheduledAt        *time.Time
+	Text               string
+	Status             model.PostStatus
+	ApprovalPending    bool
+	ApprovalPendingSet bool
+	MediaType          *string
+	MediaTypeSet       bool
+	MediaURL           *string
 }
 
 type AnalyticsOverview struct {
@@ -89,10 +91,11 @@ func (s *Store) CreatePost(ctx context.Context, input PostInput) (model.Post, er
 
 	result, err := s.db.ExecContext(
 		ctx,
-		`INSERT INTO posts(scheduled_at, text, status, created_at, updated_at, media_url, media_type) VALUES(?, ?, ?, ?, ?, ?, ?)`,
+		`INSERT INTO posts(scheduled_at, text, status, approval_pending, created_at, updated_at, media_url, media_type) VALUES(?, ?, ?, ?, ?, ?, ?, ?)`,
 		nullableTime(input.ScheduledAt),
 		strings.TrimSpace(input.Text),
 		status,
+		boolToInt(input.ApprovalPending),
 		formatDBTime(now),
 		formatDBTime(now),
 		nullableString(input.MediaURL),
@@ -113,11 +116,13 @@ func (s *Store) UpdatePost(ctx context.Context, id int64, input PostInput) (mode
 	result, err := s.db.ExecContext(
 		ctx,
 		`UPDATE posts
-		 SET scheduled_at = ?, text = ?, status = ?, media_url = ?, media_type = CASE WHEN ? THEN ? ELSE media_type END, updated_at = ?
+		 SET scheduled_at = ?, text = ?, status = ?, approval_pending = CASE WHEN ? THEN ? ELSE approval_pending END, media_url = ?, media_type = CASE WHEN ? THEN ? ELSE media_type END, updated_at = ?
 		 WHERE id = ?`,
 		nullableTime(input.ScheduledAt),
 		strings.TrimSpace(input.Text),
 		string(input.Status),
+		input.ApprovalPendingSet,
+		boolToInt(input.ApprovalPending),
 		nullableString(input.MediaURL),
 		input.MediaTypeSet,
 		nullableString(input.MediaType),
@@ -140,7 +145,7 @@ func (s *Store) UpdatePost(ctx context.Context, id int64, input PostInput) (mode
 func (s *Store) GetPost(ctx context.Context, id int64) (model.Post, error) {
 	row := s.db.QueryRowContext(
 		ctx,
-		`SELECT id, scheduled_at, text, status, created_at, updated_at, sent_at, fail_count, last_error, media_url, next_retry_at
+		`SELECT id, scheduled_at, text, status, approval_pending, created_at, updated_at, sent_at, fail_count, last_error, media_url, next_retry_at
 		 FROM posts
 		 WHERE id = ?`,
 		id,
@@ -192,7 +197,7 @@ func (s *Store) DeletePost(ctx context.Context, id int64) error {
 func (s *Store) ListPosts(ctx context.Context) ([]model.Post, error) {
 	rows, err := s.db.QueryContext(
 		ctx,
-		`SELECT id, scheduled_at, text, status, created_at, updated_at, sent_at, fail_count, last_error, media_url, next_retry_at
+		`SELECT id, scheduled_at, text, status, approval_pending, created_at, updated_at, sent_at, fail_count, last_error, media_url, next_retry_at
 		 FROM posts
 		 ORDER BY created_at DESC, id DESC`,
 	)
@@ -218,9 +223,10 @@ func (s *Store) ListPosts(ctx context.Context) ([]model.Post, error) {
 func (s *Store) ListPostsByScheduledRange(ctx context.Context, start, end time.Time) ([]model.Post, error) {
 	rows, err := s.db.QueryContext(
 		ctx,
-		`SELECT id, scheduled_at, text, status, created_at, updated_at, sent_at, fail_count, last_error, media_url, next_retry_at
+		`SELECT id, scheduled_at, text, status, approval_pending, created_at, updated_at, sent_at, fail_count, last_error, media_url, next_retry_at
 		 FROM posts
 		 WHERE scheduled_at IS NOT NULL
+		   AND approval_pending = 0
 		   AND scheduled_at >= ?
 		   AND scheduled_at < ?
 		 ORDER BY scheduled_at ASC, id ASC`,
@@ -254,9 +260,10 @@ func (s *Store) ListDuePosts(ctx context.Context, now time.Time, limit int) ([]m
 
 	rows, err := s.db.QueryContext(
 		ctx,
-		`SELECT id, scheduled_at, text, status, created_at, updated_at, sent_at, fail_count, last_error, media_url, next_retry_at
+		`SELECT id, scheduled_at, text, status, approval_pending, created_at, updated_at, sent_at, fail_count, last_error, media_url, next_retry_at
 		 FROM posts
 		 WHERE status = 'scheduled'
+		   AND approval_pending = 0
 		   AND (
 			 (next_retry_at IS NULL AND scheduled_at IS NOT NULL AND scheduled_at <= ?)
 			 OR
@@ -555,19 +562,20 @@ type scanner interface {
 
 func scanPost(s scanner) (model.Post, error) {
 	var (
-		id          int64
-		scheduledAt sql.NullString
-		text        string
-		status      string
-		createdAt   string
-		updatedAt   string
-		sentAt      sql.NullString
-		failCount   int
-		lastError   sql.NullString
-		mediaURL    sql.NullString
-		nextRetryAt sql.NullString
+		id              int64
+		scheduledAt     sql.NullString
+		text            string
+		status          string
+		approvalPending int
+		createdAt       string
+		updatedAt       string
+		sentAt          sql.NullString
+		failCount       int
+		lastError       sql.NullString
+		mediaURL        sql.NullString
+		nextRetryAt     sql.NullString
 	)
-	if err := s.Scan(&id, &scheduledAt, &text, &status, &createdAt, &updatedAt, &sentAt, &failCount, &lastError, &mediaURL, &nextRetryAt); err != nil {
+	if err := s.Scan(&id, &scheduledAt, &text, &status, &approvalPending, &createdAt, &updatedAt, &sentAt, &failCount, &lastError, &mediaURL, &nextRetryAt); err != nil {
 		return model.Post{}, err
 	}
 
@@ -581,12 +589,13 @@ func scanPost(s scanner) (model.Post, error) {
 	}
 
 	post := model.Post{
-		ID:        id,
-		Text:      text,
-		Status:    model.PostStatus(status),
-		CreatedAt: created,
-		UpdatedAt: updated,
-		FailCount: failCount,
+		ID:              id,
+		Text:            text,
+		Status:          model.PostStatus(status),
+		ApprovalPending: approvalPending > 0,
+		CreatedAt:       created,
+		UpdatedAt:       updated,
+		FailCount:       failCount,
 	}
 	if scheduledAt.Valid {
 		value, err := parseDBTime(scheduledAt.String)

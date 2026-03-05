@@ -18,7 +18,7 @@ func (s *Store) ListPostsByIDs(ctx context.Context, ids []int64) ([]model.Post, 
 		return nil, err
 	}
 
-	query := `SELECT id, scheduled_at, text, status, created_at, updated_at, sent_at, fail_count, last_error, media_url, next_retry_at
+	query := `SELECT id, scheduled_at, text, status, approval_pending, created_at, updated_at, sent_at, fail_count, last_error, media_url, next_retry_at
 		 FROM posts
 		 WHERE id IN (` + placeholders + `)
 		 ORDER BY id ASC`

@@ -15,6 +15,7 @@
       <a href="/calendar">Calendar</a>
       <a href="/calendar?view={{.View}}&date={{.CurrentDate.Format "2006-01-02"}}" data-open-post-modal="true" hx-boost="false">+ New Post</a>
       <a href="/posts/bulk">Bulk</a>
+      <a href="/approvals">Approvals</a>
       <a href="/analytics">Analytics</a>
       <a href="/settings/channels">Channels</a>
       <a href="/settings">Settings</a>
@@ -118,9 +119,9 @@
                       <a href="/posts/{{.ID}}?return_to={{printf "/calendar?view=list&date=%s" ($.CurrentDate.Format "2006-01-02")}}">view post</a>
                       <a href="/posts/{{.ID}}/edit?return_to={{printf "/calendar?view=list&date=%s" ($.CurrentDate.Format "2006-01-02")}}">edit post</a>
                       {{if ne .Status "sent"}}
-                        <form method="post" action="/posts/{{.ID}}/send-and-delete" class="inline" hx-boost="false">
+                        <form method="post" action="/posts/{{.ID}}/delete" class="inline" hx-boost="false">
                           <input type="hidden" name="return_to" value="/calendar?view=list&date={{$.CurrentDate.Format "2006-01-02"}}">
-                          <button type="submit">send and delete</button>
+                          <button type="submit" class="danger">delete</button>
                         </form>
                       {{end}}
                     </div>
@@ -159,9 +160,9 @@
                                 <a href="/posts/{{$card.ID}}?return_to={{printf "/calendar?view=week&date=%s" ($.CurrentDate.Format "2006-01-02")}}">view post</a>
                                 <a href="/posts/{{$card.ID}}/edit?return_to={{printf "/calendar?view=week&date=%s" ($.CurrentDate.Format "2006-01-02")}}">edit post</a>
                                 {{if ne $card.Status "sent"}}
-                                  <form method="post" action="/posts/{{$card.ID}}/send-and-delete" class="inline" hx-boost="false">
+                                  <form method="post" action="/posts/{{$card.ID}}/delete" class="inline" hx-boost="false">
                                     <input type="hidden" name="return_to" value="/calendar?view=week&date={{$.CurrentDate.Format "2006-01-02"}}">
-                                    <button type="submit">send and delete</button>
+                                    <button type="submit" class="danger">delete</button>
                                   </form>
                                 {{end}}
                               </div>
@@ -196,9 +197,9 @@
                         <a href="/posts/{{.ID}}?return_to={{printf "/calendar?view=month&date=%s" ($.CurrentDate.Format "2006-01-02")}}">view post</a>
                         <a href="/posts/{{.ID}}/edit?return_to={{printf "/calendar?view=month&date=%s" ($.CurrentDate.Format "2006-01-02")}}">edit post</a>
                         {{if ne .Status "sent"}}
-                          <form method="post" action="/posts/{{.ID}}/send-and-delete" class="inline" hx-boost="false">
+                          <form method="post" action="/posts/{{.ID}}/delete" class="inline" hx-boost="false">
                             <input type="hidden" name="return_to" value="/calendar?view=month&date={{$.CurrentDate.Format "2006-01-02"}}">
-                            <button type="submit">send and delete</button>
+                            <button type="submit" class="danger">delete</button>
                           </form>
                         {{end}}
                       </div>

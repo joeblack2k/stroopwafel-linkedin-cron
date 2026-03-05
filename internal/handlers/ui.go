@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"stroopwafel/internal/config"
 	"stroopwafel/internal/db"
 	"stroopwafel/internal/model"
 )
@@ -106,6 +107,21 @@ type SettingsPageData struct {
 	BotHandoff              string
 }
 
+type ApprovalQueueRow struct {
+	ID          int64
+	ScheduledAt string
+	Status      string
+	Preview     string
+	ChannelText string
+}
+
+type ApprovalQueuePageData struct {
+	Title   string
+	Rows    []ApprovalQueueRow
+	Message string
+	Error   string
+}
+
 type WebhookTargetStatRow struct {
 	TargetURL         string
 	Total             int
@@ -181,6 +197,101 @@ func (a *App) Healthz(w http.ResponseWriter, r *http.Request) {
 	a.handleHealth(w, r, "server")
 }
 
+func (a *App) Approvals(w http.ResponseWriter, r *http.Request) {
+	posts, err := a.Store.ListPendingApprovalPosts(r.Context(), 500)
+	if err != nil {
+		http.Error(w, "failed to load approval queue", http.StatusInternalServerError)
+		return
+	}
+
+	location := a.Config.Location
+	if location == nil {
+		location = time.UTC
+	}
+
+	rows := make([]ApprovalQueueRow, 0, len(posts))
+	for _, post := range posts {
+		channels, channelErr := a.Store.ListChannelsForPost(r.Context(), post.ID)
+		if channelErr != nil {
+			http.Error(w, "failed to load approval channels", http.StatusInternalServerError)
+			return
+		}
+
+		channelNames := make([]string, 0, len(channels))
+		for _, channel := range channels {
+			channelNames = append(channelNames, channel.DisplayName)
+		}
+		channelText := strings.Join(channelNames, ", ")
+		if strings.TrimSpace(channelText) == "" {
+			channelText = "No channels"
+		}
+
+		scheduledAtText := "No date"
+		if post.ScheduledAt != nil {
+			scheduledAtText = post.ScheduledAt.In(location).Format("2006-01-02 15:04")
+		}
+
+		rows = append(rows, ApprovalQueueRow{
+			ID:          post.ID,
+			ScheduledAt: scheduledAtText,
+			Status:      string(post.Status),
+			Preview:     clipText(post.Text, 160),
+			ChannelText: channelText,
+		})
+	}
+
+	data := ApprovalQueuePageData{
+		Title:   "Approvals",
+		Rows:    rows,
+		Message: strings.TrimSpace(r.URL.Query().Get("msg")),
+		Error:   strings.TrimSpace(r.URL.Query().Get("err")),
+	}
+	if err := a.Renderer.Render(w, "approvals.html", data); err != nil {
+		http.Error(w, "failed to render approvals", http.StatusInternalServerError)
+	}
+}
+
+func (a *App) AcceptAndPlanPost(w http.ResponseWriter, r *http.Request) {
+	id, err := parseID(r.PathValue("id"))
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+
+	approved, err := a.Store.AcceptPostPlanning(r.Context(), id)
+	if err != nil {
+		if errors.Is(err, db.ErrNotFound) {
+			http.NotFound(w, r)
+			return
+		}
+		http.Redirect(w, r, "/approvals?err="+url.QueryEscape(err.Error()), http.StatusSeeOther)
+		return
+	}
+
+	message := fmt.Sprintf("Post %d accepted and planned", approved.ID)
+	http.Redirect(w, r, "/approvals?msg="+url.QueryEscape(message), http.StatusSeeOther)
+}
+
+func (a *App) UpdateApprovalPolicy(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		http.Redirect(w, r, "/settings?err="+url.QueryEscape("invalid form body"), http.StatusSeeOther)
+		return
+	}
+
+	enabled := strings.TrimSpace(r.FormValue("accept_before_planning")) != ""
+	if err := config.UpdateAcceptBeforePlanning(a.Config.ConfigPath, enabled); err != nil {
+		http.Redirect(w, r, "/settings?err="+url.QueryEscape("failed to persist approval policy"), http.StatusSeeOther)
+		return
+	}
+
+	a.Config.AcceptBeforePlanning = enabled
+	message := "Approval policy updated"
+	if enabled {
+		message = "Approval policy updated: agent posts require accept and plan"
+	}
+	http.Redirect(w, r, "/settings?msg="+url.QueryEscape(message), http.StatusSeeOther)
+}
+
 func (a *App) Calendar(w http.ResponseWriter, r *http.Request) {
 	view := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("view")))
 	if view != "week" && view != "list" {
@@ -214,7 +325,14 @@ func (a *App) Calendar(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "failed to load posts", http.StatusInternalServerError)
 			return
 		}
-		cards, err := a.enrichCalendarPostCards(r.Context(), allPosts)
+		filteredPosts := make([]model.Post, 0, len(allPosts))
+		for _, post := range allPosts {
+			if post.ApprovalPending {
+				continue
+			}
+			filteredPosts = append(filteredPosts, post)
+		}
+		cards, err := a.enrichCalendarPostCards(r.Context(), filteredPosts)
 		if err != nil {
 			http.Error(w, "failed to load post channels", http.StatusInternalServerError)
 			return

@@ -29,19 +29,20 @@ type botHandoffPayload struct {
 }
 
 type postResponse struct {
-	ID          int64   `json:"id"`
-	ScheduledAt *string `json:"scheduled_at,omitempty"`
-	Text        string  `json:"text"`
-	Status      string  `json:"status"`
-	CreatedAt   string  `json:"created_at"`
-	UpdatedAt   string  `json:"updated_at"`
-	SentAt      *string `json:"sent_at,omitempty"`
-	FailCount   int     `json:"fail_count"`
-	LastError   *string `json:"last_error,omitempty"`
-	MediaType   *string `json:"media_type,omitempty"`
-	MediaURL    *string `json:"media_url,omitempty"`
-	NextRetryAt *string `json:"next_retry_at,omitempty"`
-	ChannelIDs  []int64 `json:"channel_ids,omitempty"`
+	ID              int64   `json:"id"`
+	ScheduledAt     *string `json:"scheduled_at,omitempty"`
+	Text            string  `json:"text"`
+	Status          string  `json:"status"`
+	ApprovalPending bool    `json:"approval_pending"`
+	CreatedAt       string  `json:"created_at"`
+	UpdatedAt       string  `json:"updated_at"`
+	SentAt          *string `json:"sent_at,omitempty"`
+	FailCount       int     `json:"fail_count"`
+	LastError       *string `json:"last_error,omitempty"`
+	MediaType       *string `json:"media_type,omitempty"`
+	MediaURL        *string `json:"media_url,omitempty"`
+	NextRetryAt     *string `json:"next_retry_at,omitempty"`
+	ChannelIDs      []int64 `json:"channel_ids,omitempty"`
 }
 
 type postsListResponse struct {
@@ -296,6 +297,7 @@ func (a *App) APICreatePost(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, http.StatusBadRequest, validationErr.Error())
 		return
 	}
+	a.maybeMarkForPlanningApproval(r.Context(), &input)
 
 	created, err := a.Store.CreatePost(r.Context(), input)
 	if err != nil {
@@ -352,6 +354,7 @@ func (a *App) APIUpdatePost(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, http.StatusBadRequest, validationErr.Error())
 		return
 	}
+	a.maybeMarkForPlanningApproval(r.Context(), &input)
 
 	updated, err := a.Store.UpdatePost(r.Context(), id, input)
 	if err != nil {
@@ -528,14 +531,17 @@ func (a *App) APIReschedulePost(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	updated, err := a.Store.UpdatePost(r.Context(), id, db.PostInput{
+	updateInput := db.PostInput{
 		ScheduledAt:  scheduledAt,
 		Text:         post.Text,
 		Status:       status,
 		MediaType:    mediaType,
 		MediaTypeSet: true,
 		MediaURL:     post.MediaURL,
-	})
+	}
+	a.maybeMarkForPlanningApproval(r.Context(), &updateInput)
+
+	updated, err := a.Store.UpdatePost(r.Context(), id, updateInput)
 	if err != nil {
 		if errors.Is(err, db.ErrNotFound) {
 			writeAPIError(w, http.StatusNotFound, "post not found")
@@ -551,9 +557,12 @@ func (a *App) APIReschedulePost(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	warnings, warnErr := a.computeSchedulingWarnings(r.Context(), *scheduledAt, channelIDs, updated.ID)
-	if warnErr != nil {
-		warnings = nil
+	warnings := make([]scheduleWarning, 0)
+	if updateInput.Status == model.StatusScheduled && updateInput.ScheduledAt != nil {
+		guardrails, warnErr := a.computeSchedulingWarnings(r.Context(), *scheduledAt, channelIDs, updated.ID)
+		if warnErr == nil {
+			warnings = guardrails
+		}
 	}
 	writeJSON(w, http.StatusOK, postMutationResponse{Post: mapped, Warnings: warnings})
 }
@@ -631,16 +640,17 @@ func (a *App) mapPostResponse(ctx context.Context, post model.Post) (postRespons
 	}
 
 	response := postResponse{
-		ID:         post.ID,
-		Text:       post.Text,
-		Status:     string(post.Status),
-		CreatedAt:  post.CreatedAt.UTC().Format(time.RFC3339),
-		UpdatedAt:  post.UpdatedAt.UTC().Format(time.RFC3339),
-		FailCount:  post.FailCount,
-		LastError:  post.LastError,
-		MediaType:  mediaType,
-		MediaURL:   post.MediaURL,
-		ChannelIDs: channelIDs,
+		ID:              post.ID,
+		Text:            post.Text,
+		Status:          string(post.Status),
+		ApprovalPending: post.ApprovalPending,
+		CreatedAt:       post.CreatedAt.UTC().Format(time.RFC3339),
+		UpdatedAt:       post.UpdatedAt.UTC().Format(time.RFC3339),
+		FailCount:       post.FailCount,
+		LastError:       post.LastError,
+		MediaType:       mediaType,
+		MediaURL:        post.MediaURL,
+		ChannelIDs:      channelIDs,
 	}
 	if post.ScheduledAt != nil {
 		value := post.ScheduledAt.UTC().Format(time.RFC3339)
@@ -655,6 +665,25 @@ func (a *App) mapPostResponse(ctx context.Context, post model.Post) (postRespons
 		response.NextRetryAt = &value
 	}
 	return response, nil
+}
+
+func (a *App) maybeMarkForPlanningApproval(ctx context.Context, input *db.PostInput) {
+	if input == nil {
+		return
+	}
+	if !a.Config.AcceptBeforePlanning {
+		return
+	}
+	if authMethodFromContext(ctx) != "api-key" {
+		return
+	}
+	if input.Status != model.StatusScheduled {
+		return
+	}
+
+	input.Status = model.StatusDraft
+	input.ApprovalPending = true
+	input.ApprovalPendingSet = true
 }
 
 func dedupeChannelIDs(ids []int64) []int64 {
