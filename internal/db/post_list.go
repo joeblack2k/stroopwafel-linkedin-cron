@@ -64,7 +64,7 @@ func (s *Store) CountPostsFiltered(ctx context.Context, filter PostListFilter) (
 }
 
 func buildPostListQuery(filter PostListFilter, countOnly bool) (string, []any) {
-	selectClause := `SELECT p.id, p.scheduled_at, p.text, p.status, p.approval_pending, p.created_at, p.updated_at, p.sent_at, p.fail_count, p.last_error, p.media_url, p.next_retry_at`
+	selectClause := `SELECT p.id, p.scheduled_at, p.text, p.status, p.approval_pending, p.planning_approved, p.created_at, p.updated_at, p.sent_at, p.fail_count, p.last_error, p.media_url, p.next_retry_at`
 	if countOnly {
 		selectClause = `SELECT COUNT(1)`
 	}

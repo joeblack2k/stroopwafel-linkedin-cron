@@ -24,19 +24,20 @@ const (
 )
 
 type Post struct {
-	ID              int64      `json:"id"`
-	ScheduledAt     *time.Time `json:"scheduled_at,omitempty"`
-	Text            string     `json:"text"`
-	Status          PostStatus `json:"status"`
-	ApprovalPending bool       `json:"approval_pending"`
-	CreatedAt       time.Time  `json:"created_at"`
-	UpdatedAt       time.Time  `json:"updated_at"`
-	SentAt          *time.Time `json:"sent_at,omitempty"`
-	FailCount       int        `json:"fail_count"`
-	LastError       *string    `json:"last_error,omitempty"`
-	MediaType       *string    `json:"media_type,omitempty"`
-	MediaURL        *string    `json:"media_url,omitempty"`
-	NextRetryAt     *time.Time `json:"next_retry_at,omitempty"`
+	ID               int64      `json:"id"`
+	ScheduledAt      *time.Time `json:"scheduled_at,omitempty"`
+	Text             string     `json:"text"`
+	Status           PostStatus `json:"status"`
+	ApprovalPending  bool       `json:"approval_pending"`
+	PlanningApproved bool       `json:"-"`
+	CreatedAt        time.Time  `json:"created_at"`
+	UpdatedAt        time.Time  `json:"updated_at"`
+	SentAt           *time.Time `json:"sent_at,omitempty"`
+	FailCount        int        `json:"fail_count"`
+	LastError        *string    `json:"last_error,omitempty"`
+	MediaType        *string    `json:"media_type,omitempty"`
+	MediaURL         *string    `json:"media_url,omitempty"`
+	NextRetryAt      *time.Time `json:"next_retry_at,omitempty"`
 }
 
 func (s PostStatus) Valid() bool {

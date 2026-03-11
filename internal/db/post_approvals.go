@@ -18,7 +18,7 @@ func (s *Store) ListPendingApprovalPosts(ctx context.Context, limit int) ([]mode
 
 	rows, err := s.db.QueryContext(
 		ctx,
-		`SELECT id, scheduled_at, text, status, approval_pending, created_at, updated_at, sent_at, fail_count, last_error, media_url, next_retry_at
+		`SELECT id, scheduled_at, text, status, approval_pending, planning_approved, created_at, updated_at, sent_at, fail_count, last_error, media_url, next_retry_at
 		 FROM posts
 		 WHERE approval_pending = 1
 		 ORDER BY created_at DESC, id DESC
@@ -69,7 +69,7 @@ func (s *Store) AcceptPostPlanning(ctx context.Context, id int64) (model.Post, e
 	result, err := s.db.ExecContext(
 		ctx,
 		`UPDATE posts
-		 SET status = ?, approval_pending = 0, updated_at = ?
+		 SET status = ?, approval_pending = 0, planning_approved = 1, updated_at = ?
 		 WHERE id = ?`,
 		string(status),
 		formatDBTime(now),

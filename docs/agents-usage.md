@@ -16,7 +16,8 @@ This runbook is for agents that operate the API while we close Postiz parity gap
    - `POST /api/v1/channels/{id}/rotate-credentials`
 2. **Create scheduled post with channels**
    - `POST /api/v1/posts` with `status=scheduled`, `scheduled_at`, `channel_ids`
-   - If `accept_before_planning=true` and auth is API key, scheduled posts are stored as draft with `approval_pending=true` until approved in UI (`/approvals`).
+   - If `accept_before_planning=true` and auth is API key, the first scheduling request for a post is stored as draft with `approval_pending=true` until approved in UI (`/approvals`).
+   - After that post has been approved once, later API edits and reschedules for the same post do not require another approval.
 3. **Operate delivery**
    - `POST /api/v1/posts/{id}/send-now`
    - `POST /api/v1/posts/{id}/reschedule`
@@ -48,6 +49,12 @@ This runbook is for agents that operate the API while we close Postiz parity gap
 - Same key + same payload returns stored response with `X-Idempotent-Replay: true`.
 - Same key + different payload returns `409` conflict.
 - Use a fresh key per logical action from an agent workflow step.
+
+## Approval boundaries
+
+- Read-only endpoints (`GET`) never require planning approval.
+- Non-scheduling mutating calls can proceed normally with an API key.
+- Planning approval is only for the first transition of a post into a scheduled state when `accept_before_planning=true`.
 
 ## Webhook lifecycle events
 

@@ -304,6 +304,17 @@ ALTER TABLE posts ADD COLUMN approval_pending INTEGER NOT NULL DEFAULT 0;
 CREATE INDEX IF NOT EXISTS idx_posts_approval_pending ON posts(approval_pending, created_at DESC, id DESC);
 `,
 	},
+	{
+		name: "015_post_planning_approval_state",
+		sql: `
+ALTER TABLE posts ADD COLUMN planning_approved INTEGER NOT NULL DEFAULT 0;
+
+UPDATE posts
+SET planning_approved = 1
+WHERE approval_pending = 0
+  AND status IN ('scheduled', 'sent', 'failed');
+`,
+	},
 }
 
 func Migrate(ctx context.Context, database *sql.DB) (string, error) {

@@ -43,6 +43,9 @@ func TestListPendingApprovalPosts(t *testing.T) {
 	if !pending[0].ApprovalPending {
 		t.Fatal("expected approval_pending=true")
 	}
+	if pending[0].PlanningApproved {
+		t.Fatal("expected planning_approved=false while waiting for approval")
+	}
 }
 
 func TestAcceptPostPlanning(t *testing.T) {
@@ -72,5 +75,8 @@ func TestAcceptPostPlanning(t *testing.T) {
 	}
 	if approved.ApprovalPending {
 		t.Fatal("expected approval_pending=false after approval")
+	}
+	if !approved.PlanningApproved {
+		t.Fatal("expected planning_approved=true after approval")
 	}
 }

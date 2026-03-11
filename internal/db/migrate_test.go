@@ -117,6 +117,12 @@ func TestMigrateBootstrapsSchema(t *testing.T) {
 	if columnCount != 1 {
 		t.Fatalf("expected approval_pending column to exist, got count=%d", columnCount)
 	}
+	if err := database.QueryRow(`SELECT COUNT(1) FROM pragma_table_info('posts') WHERE name='planning_approved'`).Scan(&columnCount); err != nil {
+		t.Fatalf("query planning_approved column: %v", err)
+	}
+	if columnCount != 1 {
+		t.Fatalf("expected planning_approved column to exist, got count=%d", columnCount)
+	}
 
 	repeatedStatus, err := Migrate(context.Background(), database)
 	if err != nil {

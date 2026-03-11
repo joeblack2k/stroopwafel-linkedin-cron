@@ -1312,3 +1312,143 @@ func TestAPICreatePostBasicAuthSkipsApprovalQueue(t *testing.T) {
 		t.Fatal("expected approval_pending=false for basic auth")
 	}
 }
+
+func TestAPIUpdateApprovedPostSkipsRepeatApproval(t *testing.T) {
+	t.Parallel()
+
+	app := newAPIApp(t)
+	app.Config.AcceptBeforePlanning = true
+	channel := mustCreateDryRunChannel(t, app.Store)
+
+	initialDueAt := time.Now().UTC().Add(2 * time.Hour).Format(time.RFC3339)
+	createPayload := map[string]any{
+		"text":         "agent scheduled post",
+		"status":       "scheduled",
+		"scheduled_at": initialDueAt,
+		"channel_ids":  []int64{channel.ID},
+	}
+
+	ctx := context.WithValue(context.Background(), contextKeyAuthMethod, "api-key")
+	ctx = context.WithValue(ctx, contextKeyAPIKeyName, "agent-bot")
+
+	createRecorder := performJSONHandlerRequestWithContext(t, ctx, http.MethodPost, "/api/v1/posts", createPayload, app.APICreatePost)
+	if createRecorder.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d (%s)", createRecorder.Code, createRecorder.Body.String())
+	}
+
+	var createdResponse struct {
+		Post struct {
+			ID int64 `json:"id"`
+		} `json:"post"`
+	}
+	if err := json.Unmarshal(createRecorder.Body.Bytes(), &createdResponse); err != nil {
+		t.Fatalf("decode create response: %v", err)
+	}
+
+	approved, err := app.Store.AcceptPostPlanning(context.Background(), createdResponse.Post.ID)
+	if err != nil {
+		t.Fatalf("accept post planning: %v", err)
+	}
+	if !approved.PlanningApproved {
+		t.Fatal("expected planning_approved=true after accepting post")
+	}
+
+	updatedDueAt := time.Now().UTC().Add(3 * time.Hour).Format(time.RFC3339)
+	updatePayload := map[string]any{
+		"text":         "agent updated post",
+		"status":       "scheduled",
+		"scheduled_at": updatedDueAt,
+		"channel_ids":  []int64{channel.ID},
+	}
+	updatePath := "/api/v1/posts/" + strconv.FormatInt(createdResponse.Post.ID, 10)
+	updateRecorder := performJSONHandlerRequestWithContext(t, ctx, http.MethodPut, updatePath, updatePayload, app.APIUpdatePost)
+	if updateRecorder.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d (%s)", updateRecorder.Code, updateRecorder.Body.String())
+	}
+
+	var updateResponse struct {
+		Post struct {
+			Status          string `json:"status"`
+			ApprovalPending bool   `json:"approval_pending"`
+		} `json:"post"`
+	}
+	if err := json.Unmarshal(updateRecorder.Body.Bytes(), &updateResponse); err != nil {
+		t.Fatalf("decode update response: %v", err)
+	}
+	if updateResponse.Post.Status != string(model.StatusScheduled) {
+		t.Fatalf("expected scheduled status after update, got %q", updateResponse.Post.Status)
+	}
+	if updateResponse.Post.ApprovalPending {
+		t.Fatal("expected approval_pending=false after post was already approved once")
+	}
+
+	stored, err := app.Store.GetPost(context.Background(), createdResponse.Post.ID)
+	if err != nil {
+		t.Fatalf("reload updated post: %v", err)
+	}
+	if !stored.PlanningApproved {
+		t.Fatal("expected planning_approved=true to persist after update")
+	}
+}
+
+func TestAPIRescheduleApprovedPostSkipsRepeatApproval(t *testing.T) {
+	t.Parallel()
+
+	app := newAPIApp(t)
+	app.Config.AcceptBeforePlanning = true
+	channel := mustCreateDryRunChannel(t, app.Store)
+
+	initialDueAt := time.Now().UTC().Add(2 * time.Hour).Format(time.RFC3339)
+	createPayload := map[string]any{
+		"text":         "agent scheduled post",
+		"status":       "scheduled",
+		"scheduled_at": initialDueAt,
+		"channel_ids":  []int64{channel.ID},
+	}
+
+	ctx := context.WithValue(context.Background(), contextKeyAuthMethod, "api-key")
+	ctx = context.WithValue(ctx, contextKeyAPIKeyName, "agent-bot")
+
+	createRecorder := performJSONHandlerRequestWithContext(t, ctx, http.MethodPost, "/api/v1/posts", createPayload, app.APICreatePost)
+	if createRecorder.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d (%s)", createRecorder.Code, createRecorder.Body.String())
+	}
+
+	var createdResponse struct {
+		Post struct {
+			ID int64 `json:"id"`
+		} `json:"post"`
+	}
+	if err := json.Unmarshal(createRecorder.Body.Bytes(), &createdResponse); err != nil {
+		t.Fatalf("decode create response: %v", err)
+	}
+
+	if _, err := app.Store.AcceptPostPlanning(context.Background(), createdResponse.Post.ID); err != nil {
+		t.Fatalf("accept post planning: %v", err)
+	}
+
+	reschedulePath := "/api/v1/posts/" + strconv.FormatInt(createdResponse.Post.ID, 10) + "/reschedule"
+	reschedulePayload := map[string]any{
+		"scheduled_at": time.Now().UTC().Add(4 * time.Hour).Format(time.RFC3339),
+	}
+	rescheduleRecorder := performJSONHandlerRequestWithContext(t, ctx, http.MethodPost, reschedulePath, reschedulePayload, app.APIReschedulePost)
+	if rescheduleRecorder.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d (%s)", rescheduleRecorder.Code, rescheduleRecorder.Body.String())
+	}
+
+	var rescheduleResponse struct {
+		Post struct {
+			Status          string `json:"status"`
+			ApprovalPending bool   `json:"approval_pending"`
+		} `json:"post"`
+	}
+	if err := json.Unmarshal(rescheduleRecorder.Body.Bytes(), &rescheduleResponse); err != nil {
+		t.Fatalf("decode reschedule response: %v", err)
+	}
+	if rescheduleResponse.Post.Status != string(model.StatusScheduled) {
+		t.Fatalf("expected scheduled status after reschedule, got %q", rescheduleResponse.Post.Status)
+	}
+	if rescheduleResponse.Post.ApprovalPending {
+		t.Fatal("expected approval_pending=false after post was already approved once")
+	}
+}

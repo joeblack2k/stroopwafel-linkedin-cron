@@ -297,7 +297,7 @@ func (a *App) APICreatePost(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, http.StatusBadRequest, validationErr.Error())
 		return
 	}
-	a.maybeMarkForPlanningApproval(r.Context(), &input)
+	a.maybeMarkForPlanningApproval(r.Context(), nil, &input)
 
 	created, err := a.Store.CreatePost(r.Context(), input)
 	if err != nil {
@@ -354,7 +354,17 @@ func (a *App) APIUpdatePost(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, http.StatusBadRequest, validationErr.Error())
 		return
 	}
-	a.maybeMarkForPlanningApproval(r.Context(), &input)
+
+	existing, err := a.Store.GetPost(r.Context(), id)
+	if err != nil {
+		if errors.Is(err, db.ErrNotFound) {
+			writeAPIError(w, http.StatusNotFound, "post not found")
+			return
+		}
+		writeAPIError(w, http.StatusInternalServerError, "failed to load post")
+		return
+	}
+	a.maybeMarkForPlanningApproval(r.Context(), &existing, &input)
 
 	updated, err := a.Store.UpdatePost(r.Context(), id, input)
 	if err != nil {
@@ -539,7 +549,7 @@ func (a *App) APIReschedulePost(w http.ResponseWriter, r *http.Request) {
 		MediaTypeSet: true,
 		MediaURL:     post.MediaURL,
 	}
-	a.maybeMarkForPlanningApproval(r.Context(), &updateInput)
+	a.maybeMarkForPlanningApproval(r.Context(), &post, &updateInput)
 
 	updated, err := a.Store.UpdatePost(r.Context(), id, updateInput)
 	if err != nil {
@@ -667,23 +677,37 @@ func (a *App) mapPostResponse(ctx context.Context, post model.Post) (postRespons
 	return response, nil
 }
 
-func (a *App) maybeMarkForPlanningApproval(ctx context.Context, input *db.PostInput) {
+func (a *App) maybeMarkForPlanningApproval(ctx context.Context, existing *model.Post, input *db.PostInput) {
 	if input == nil {
 		return
 	}
-	if !a.Config.AcceptBeforePlanning {
-		return
+	if existing != nil && existing.PlanningApproved {
+		input.PlanningApproved = true
+		input.PlanningApprovedSet = true
 	}
-	if authMethodFromContext(ctx) != "api-key" {
-		return
-	}
+
 	if input.Status != model.StatusScheduled {
+		return
+	}
+
+	requiresApproval := a.Config.AcceptBeforePlanning && authMethodFromContext(ctx) == "api-key"
+	if existing != nil && existing.PlanningApproved {
+		requiresApproval = false
+	}
+
+	if !requiresApproval {
+		input.ApprovalPending = false
+		input.ApprovalPendingSet = true
+		input.PlanningApproved = true
+		input.PlanningApprovedSet = true
 		return
 	}
 
 	input.Status = model.StatusDraft
 	input.ApprovalPending = true
 	input.ApprovalPendingSet = true
+	input.PlanningApproved = false
+	input.PlanningApprovedSet = true
 }
 
 func dedupeChannelIDs(ids []int64) []int64 {
